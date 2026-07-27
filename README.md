@@ -1,10 +1,10 @@
-# 衣集
+# THE LOOK BOOK
 
 一款极简的个人衣橱与穿搭记录网站。
 
 ## 在线使用
 
-[打开衣集](https://succiyu666-create.github.io/yiji-wardrobe/)
+[打开 THE LOOK BOOK](https://succiyu666-create.github.io/yiji-wardrobe/)
 
 ## 功能
 

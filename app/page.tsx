@@ -784,10 +784,10 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="side-rail">
-        <a className="brand-mark" href="#top" aria-label="衣集首页">
-          <span>衣</span>
-          <strong>衣集</strong>
-          <small>YI JI</small>
+        <a className="brand-mark" href="#top" aria-label="THE LOOK BOOK 首页">
+          <span>TLB</span>
+          <strong>THE LOOK BOOK</strong>
+          <small>PERSONAL DRESSING ROOM</small>
         </a>
 
         <nav className="desktop-nav" aria-label="主要导航">
@@ -818,8 +818,8 @@ export default function Home() {
       <div className="content" id="top">
         <header className="topbar">
           <div className="mobile-brand">
-            <span>衣</span>
-            <strong>衣集</strong>
+            <span>TLB</span>
+            <strong>THE LOOK BOOK</strong>
           </div>
           <p>{view === "wardrobe" ? "MY WARDROBE" : "MY DRESSING ROOM"}</p>
           <button
@@ -838,16 +838,16 @@ export default function Home() {
           <>
             <section className="hero">
               <div>
-                <p className="eyebrow">你的数字衣橱</p>
+                <p className="eyebrow">YOUR DAILY WARDROBE</p>
                 <h1>
-                  每一件衣服，
+                  今天想穿什么？
                   <br />
-                  都有它的搭配故事。
+                  从喜欢的衣服开始。
                 </h1>
               </div>
               <p className="hero-copy">
-                上传单品、记录组合。以后点开一件衣服，
-                就能找回所有穿过和想过的搭配。
+                把常穿的衣服放进来，随手记录搭配。
+                找衣服、换季和出门前，都更轻松。
               </p>
             </section>
 
@@ -864,13 +864,13 @@ export default function Home() {
                 <strong>{unstyledCount.toString().padStart(2, "0")}</strong>
                 <span>件待搭配</span>
               </div>
-              <p>先记录，不必整理得完美。你的搭配档案会自然长出来。</p>
+              <p>先从常穿的开始，衣橱会一点点变得更好用。</p>
             </section>
 
             <section className="collection-section">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">WARDROBE INDEX</p>
+                  <p className="eyebrow">YOUR CLOSET</p>
                   <h2>{showArchived ? "已归档单品" : "我的衣橱"}</h2>
                 </div>
                 <div className="wardrobe-tools">
@@ -974,16 +974,16 @@ export default function Home() {
           <>
             <section className="hero lookbook-hero">
               <div>
-                <p className="eyebrow">你的四季衣帽间</p>
+                <p className="eyebrow">SEASONAL LOOKS</p>
                 <h1>
-                  四季流转，
+                  春夏秋冬，
                   <br />
-                  搭配各有归处。
+                  都穿得开心。
                 </h1>
               </div>
               <p className="hero-copy">
-                按春夏秋冬收好每套造型。换季时打开这一格，
-                就能快速找回当季穿搭。
+                按季节收好每套搭配。换季或出门前，
+                打开对应的一格就能快速找到。
               </p>
             </section>
 
