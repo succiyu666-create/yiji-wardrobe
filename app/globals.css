@@ -659,6 +659,88 @@ button:disabled {
   margin: 0;
 }
 
+.season-tabs {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 35px;
+}
+
+.season-tabs button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 42px 1fr;
+  min-height: 94px;
+  padding: 15px;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.season-tabs button:hover {
+  border-color: rgba(32, 32, 29, 0.24);
+  transform: translateY(-1px);
+}
+
+.season-tabs button.active {
+  background: var(--ink);
+  color: white;
+}
+
+.season-mark {
+  align-items: center;
+  background: var(--paper);
+  border-radius: 50%;
+  color: var(--accent);
+  display: flex;
+  font-family: var(--serif);
+  font-size: 17px;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.season-tabs button.active .season-mark {
+  background: var(--accent);
+  color: white;
+}
+
+.season-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.season-name strong {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.season-name small {
+  color: var(--muted);
+  font-family: Georgia, serif;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  margin-top: 7px;
+}
+
+.season-tabs button.active .season-name small,
+.season-tabs button.active .season-note {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.season-note {
+  color: var(--muted);
+  font-size: 9px;
+  grid-column: 1 / -1;
+  letter-spacing: 0.06em;
+}
+
 .outfit-grid {
   display: grid;
   gap: 27px;
@@ -754,11 +836,24 @@ button:disabled {
   padding: 20px 10px 13px;
 }
 
+.outfit-card-kicker {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
 .outfit-card-copy .card-index {
   color: var(--accent);
   font-family: Georgia, serif;
   font-size: 9px;
   letter-spacing: 0.14em;
+}
+
+.season-chip {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 8px;
+  padding: 3px 6px;
 }
 
 .outfit-card-copy h3 {
@@ -1284,6 +1379,10 @@ button:disabled {
   flex: 0 0 160px !important;
 }
 
+.season-field {
+  flex: 0 0 100px !important;
+}
+
 .picker-fieldset {
   border: 0;
   margin: 24px 0 0;
@@ -1600,6 +1699,26 @@ button:disabled {
     margin-top: 28px;
   }
 
+  .season-tabs {
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 28px;
+  }
+
+  .season-tabs button {
+    min-height: 82px;
+    padding: 12px;
+  }
+
+  .season-mark {
+    height: 36px;
+    width: 36px;
+  }
+
+  .season-name strong {
+    font-size: 19px;
+  }
+
   .outfit-card {
     display: grid;
     grid-template-columns: 48% 52%;
@@ -1692,6 +1811,10 @@ button:disabled {
   }
 
   .occasion-field {
+    flex: 1 1 auto !important;
+  }
+
+  .season-field {
     flex: 1 1 auto !important;
   }
 

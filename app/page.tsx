@@ -26,6 +26,7 @@ type ClothingItem = {
 type Outfit = {
   id: string;
   name: string;
+  season: OutfitSeason;
   occasion: string;
   notes: string;
   itemIds: string[];
@@ -46,6 +47,17 @@ type OutfitEditorState =
 
 const CATEGORIES = ["上衣", "下装", "外套", "连衣裙", "鞋履", "包袋", "配饰", "其他"];
 const SEASONS = ["四季", "春夏", "秋冬", "春", "夏", "秋", "冬"];
+const OUTFIT_SEASONS = ["春", "夏", "秋", "冬"] as const;
+type OutfitSeason = (typeof OUTFIT_SEASONS)[number];
+const SEASON_DETAILS: Record<
+  OutfitSeason,
+  { english: string; note: string; mark: string }
+> = {
+  春: { english: "SPRING", note: "轻盈叠穿", mark: "芽" },
+  夏: { english: "SUMMER", note: "清爽留白", mark: "风" },
+  秋: { english: "AUTUMN", note: "温暖层次", mark: "叶" },
+  冬: { english: "WINTER", note: "厚实包裹", mark: "雪" },
+};
 const OCCASIONS = ["日常", "通勤", "约会", "旅行", "运动", "正式", "其他"];
 const EMPTY_STATE: AppState = { items: [], outfits: [] };
 const DB_NAME = "yiji-wardrobe";
@@ -130,6 +142,40 @@ function formatDate(timestamp: number) {
     month: "short",
     day: "numeric",
   }).format(timestamp);
+}
+
+function currentOutfitSeason(): OutfitSeason {
+  const month = new Date().getMonth() + 1;
+  if (month >= 3 && month <= 5) return "春";
+  if (month >= 6 && month <= 8) return "夏";
+  if (month >= 9 && month <= 11) return "秋";
+  return "冬";
+}
+
+function isOutfitSeason(value: string | undefined): value is OutfitSeason {
+  return OUTFIT_SEASONS.includes(value as OutfitSeason);
+}
+
+function inferOutfitSeason(itemIds: string[], items: ClothingItem[]): OutfitSeason {
+  const scores = new Map<OutfitSeason, number>(
+    OUTFIT_SEASONS.map((season) => [season, 0]),
+  );
+
+  itemIds.forEach((id) => {
+    const garmentSeason = items.find((item) => item.id === id)?.season ?? "";
+    OUTFIT_SEASONS.forEach((season) => {
+      if (garmentSeason.includes(season)) {
+        scores.set(season, (scores.get(season) ?? 0) + 1);
+      }
+    });
+  });
+
+  const highest = Math.max(...scores.values());
+  if (highest === 0) return currentOutfitSeason();
+  return (
+    OUTFIT_SEASONS.find((season) => scores.get(season) === highest) ??
+    currentOutfitSeason()
+  );
 }
 
 function categoryMark(category: string) {
@@ -411,6 +457,7 @@ function ItemEditor({
 function OutfitEditor({
   initial,
   seedItemIds,
+  preferredSeason,
   items,
   onClose,
   onSave,
@@ -418,12 +465,19 @@ function OutfitEditor({
 }: {
   initial: Outfit | null;
   seedItemIds: string[];
+  preferredSeason: OutfitSeason;
   items: ClothingItem[];
   onClose: () => void;
   onSave: (outfit: Outfit) => void;
   onDelete: (outfit: Outfit) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
+  const [season, setSeason] = useState<OutfitSeason>(
+    initial?.season ??
+      (seedItemIds.length
+        ? inferOutfitSeason(seedItemIds, items)
+        : preferredSeason),
+  );
   const [occasion, setOccasion] = useState(initial?.occasion ?? OCCASIONS[0]);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [selected, setSelected] = useState<string[]>(initial?.itemIds ?? seedItemIds);
@@ -450,6 +504,7 @@ function OutfitEditor({
     onSave({
       id: initial?.id ?? makeId(),
       name: name.trim(),
+      season,
       occasion,
       notes: notes.trim(),
       itemIds: selected,
@@ -480,6 +535,19 @@ function OutfitEditor({
             <select value={occasion} onChange={(event) => setOccasion(event.target.value)}>
               {OCCASIONS.map((value) => (
                 <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field season-field">
+            <span>季节</span>
+            <select
+              value={season}
+              onChange={(event) => setSeason(event.target.value as OutfitSeason)}
+            >
+              {OUTFIT_SEASONS.map((value) => (
+                <option key={value} value={value}>
+                  {value}季
+                </option>
               ))}
             </select>
           </label>
@@ -554,6 +622,9 @@ export default function Home() {
   const [state, setState] = useState<AppState>(EMPTY_STATE);
   const [hydrated, setHydrated] = useState(false);
   const [view, setView] = useState<View>("wardrobe");
+  const [outfitSeason, setOutfitSeason] = useState<OutfitSeason>(
+    currentOutfitSeason,
+  );
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("全部");
   const [showArchived, setShowArchived] = useState(false);
@@ -569,9 +640,16 @@ export default function Home() {
     loadState()
       .then((stored) => {
         if (!active) return;
+        const storedItems = Array.isArray(stored.items) ? stored.items : [];
+        const storedOutfits = Array.isArray(stored.outfits) ? stored.outfits : [];
         setState({
-          items: Array.isArray(stored.items) ? stored.items : [],
-          outfits: Array.isArray(stored.outfits) ? stored.outfits : [],
+          items: storedItems,
+          outfits: storedOutfits.map((outfit) => ({
+            ...outfit,
+            season: isOutfitSeason(outfit.season)
+              ? outfit.season
+              : inferOutfitSeason(outfit.itemIds, storedItems),
+          })),
         });
         setStorageMessage("已保存在这台设备");
       })
@@ -628,6 +706,13 @@ export default function Home() {
   const selectedItem = state.items.find((item) => item.id === selectedItemId) ?? null;
   const selectedOutfit =
     state.outfits.find((outfit) => outfit.id === selectedOutfitId) ?? null;
+  const seasonalOutfits = useMemo(
+    () =>
+      state.outfits
+        .filter((outfit) => outfit.season === outfitSeason)
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [outfitSeason, state.outfits],
+  );
   const relatedOutfits = selectedItem
     ? state.outfits.filter((outfit) => outfit.itemIds.includes(selectedItem.id))
     : [];
@@ -659,6 +744,7 @@ export default function Home() {
     setOutfitEditor(null);
     setSelectedOutfitId(outfit.id);
     setSelectedItemId(null);
+    setOutfitSeason(outfit.season);
     setView("outfits");
   }
 
@@ -719,7 +805,7 @@ export default function Home() {
             onClick={() => navigate("outfits")}
           >
             <span>02</span>
-            搭配
+            衣帽间
           </button>
         </nav>
 
@@ -735,7 +821,7 @@ export default function Home() {
             <span>衣</span>
             <strong>衣集</strong>
           </div>
-          <p>{view === "wardrobe" ? "MY WARDROBE" : "MY LOOKBOOK"}</p>
+          <p>{view === "wardrobe" ? "MY WARDROBE" : "MY DRESSING ROOM"}</p>
           <button
             className="header-add"
             type="button"
@@ -888,33 +974,59 @@ export default function Home() {
           <>
             <section className="hero lookbook-hero">
               <div>
-                <p className="eyebrow">你的搭配灵感册</p>
+                <p className="eyebrow">你的四季衣帽间</p>
                 <h1>
-                  好搭配，
+                  四季流转，
                   <br />
-                  值得被记住。
+                  搭配各有归处。
                 </h1>
               </div>
               <p className="hero-copy">
-                选择衣橱里的单品组合成一套造型，
-                系统会自动生成拼贴封面。
+                按春夏秋冬收好每套造型。换季时打开这一格，
+                就能快速找回当季穿搭。
               </p>
             </section>
 
             <section className="lookbook-section">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">LOOKBOOK ARCHIVE</p>
-                  <h2>全部搭配</h2>
+                  <p className="eyebrow">{SEASON_DETAILS[outfitSeason].english} LOOKS</p>
+                  <h2>{outfitSeason}季搭配</h2>
                 </div>
                 <p className="section-count">{state.outfits.length} 套记录</p>
               </div>
 
-              {state.outfits.length > 0 ? (
+              <div className="season-tabs" role="tablist" aria-label="按季节筛选搭配">
+                {OUTFIT_SEASONS.map((season) => {
+                  const count = state.outfits.filter(
+                    (outfit) => outfit.season === season,
+                  ).length;
+                  const detail = SEASON_DETAILS[season];
+                  return (
+                    <button
+                      className={outfitSeason === season ? "active" : ""}
+                      type="button"
+                      role="tab"
+                      aria-selected={outfitSeason === season}
+                      key={season}
+                      onClick={() => setOutfitSeason(season)}
+                    >
+                      <span className="season-mark">{detail.mark}</span>
+                      <span className="season-name">
+                        <strong>{season}</strong>
+                        <small>{detail.english}</small>
+                      </span>
+                      <span className="season-note">
+                        {detail.note} · {count.toString().padStart(2, "0")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {seasonalOutfits.length > 0 ? (
                 <div className="outfit-grid">
-                  {[...state.outfits]
-                    .sort((a, b) => b.updatedAt - a.updatedAt)
-                    .map((outfit, index) => (
+                  {seasonalOutfits.map((outfit, index) => (
                       <button
                         className="outfit-card"
                         type="button"
@@ -923,9 +1035,12 @@ export default function Home() {
                       >
                         <OutfitCollage outfit={outfit} items={state.items} />
                         <div className="outfit-card-copy">
-                          <span className="card-index">
-                            LOOK {(index + 1).toString().padStart(2, "0")}
-                          </span>
+                          <div className="outfit-card-kicker">
+                            <span className="card-index">
+                              LOOK {(index + 1).toString().padStart(2, "0")}
+                            </span>
+                            <span className="season-chip">{outfit.season}季</span>
+                          </div>
                           <h3>{outfit.name}</h3>
                           <p>
                             {outfit.occasion} · {outfit.itemIds.length} 件单品
@@ -941,11 +1056,11 @@ export default function Home() {
                     <span>下</span>
                     <span>鞋</span>
                   </div>
-                  <p className="eyebrow">还没有搭配记录</p>
-                  <h3>{activeItems.length ? "把衣橱里的单品组合起来" : "先从添加单品开始"}</h3>
+                  <p className="eyebrow">{outfitSeason}季这一格还是空的</p>
+                  <h3>{activeItems.length ? `记录第一套${outfitSeason}季搭配` : "先从添加单品开始"}</h3>
                   <p>
                     {activeItems.length
-                      ? "选中几件衣服，命名并保存，就是你的第一套搭配。"
+                      ? `选中几件衣服并保存，它们会被收进${outfitSeason}季衣帽间。`
                       : "衣橱有了单品之后，就能在这里自由组合。"}
                   </p>
                   <button
@@ -989,7 +1104,7 @@ export default function Home() {
           onClick={() => navigate("outfits")}
         >
           <span>搭</span>
-          搭配
+          衣帽间
         </button>
       </nav>
 
@@ -1114,7 +1229,9 @@ export default function Home() {
             <OutfitCollage outfit={selectedOutfit} items={state.items} />
             <div className="drawer-title">
               <div>
-                <span>{selectedOutfit.occasion}</span>
+                <span>
+                  {selectedOutfit.season}季 · {selectedOutfit.occasion}
+                </span>
                 <h2 id="outfit-detail-title">{selectedOutfit.name}</h2>
               </div>
               <button
@@ -1180,6 +1297,7 @@ export default function Home() {
         <OutfitEditor
           initial={outfitEditor.outfit ?? null}
           seedItemIds={outfitEditor.seedItemIds ?? []}
+          preferredSeason={outfitSeason}
           items={state.items}
           onClose={() => setOutfitEditor(null)}
           onSave={saveOutfit}
