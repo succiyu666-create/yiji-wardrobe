@@ -2,6 +2,10 @@
 
 一款极简的个人衣橱与穿搭记录网站。
 
+## 在线使用
+
+[打开衣集](https://succiyu666-create.github.io/yiji-wardrobe/)
+
 ## 功能
 
 - 上传、编辑和归档衣服单品
@@ -25,6 +29,14 @@ pnpm run dev
 ```bash
 pnpm run build
 ```
+
+GitHub Pages 静态构建：
+
+```bash
+pnpm run build:pages
+```
+
+推送到 `main` 分支后，GitHub Actions 会自动更新线上网站。
 
 ## 数据说明
 
