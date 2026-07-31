@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 
+type ArchiveDisposition = "undecided" | "discarded" | "resold";
+
 type ClothingItem = {
   id: string;
   name: string;
@@ -22,6 +24,9 @@ type ClothingItem = {
   wearCount: number;
   lastWornAt: number | null;
   archived: boolean;
+  archiveDisposition: ArchiveDisposition;
+  resalePrice: number | null;
+  archivedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -43,7 +48,12 @@ type AppState = {
 };
 
 type View = "wardrobe" | "outfits";
-type WardrobeSort = "updated" | "unworn" | "most-worn" | "cost-high";
+type WardrobeSort =
+  | "updated"
+  | "unworn"
+  | "most-worn"
+  | "cost-high"
+  | "final-cost-high";
 type ItemEditorState = ClothingItem | "new" | null;
 type OutfitEditorState =
   | { outfit?: Outfit; seedItemIds?: string[] }
@@ -70,6 +80,14 @@ const STORE_NAME = "wardrobe";
 const STATE_KEY = "current-state";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LONG_UNWORN_DAYS = 90;
+const ARCHIVE_DETAILS: Record<
+  ArchiveDisposition,
+  { label: string; description: string }
+> = {
+  undecided: { label: "待处理", description: "暂时移出衣橱，之后再决定去向" },
+  discarded: { label: "已报废", description: "已经丢弃、损坏或不再使用" },
+  resold: { label: "已出二手", description: "已经出售，并记录实际成交价" },
+};
 
 function makeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -164,6 +182,27 @@ function averageWearCost(item: ClothingItem) {
   return item.price / item.wearCount;
 }
 
+function finalUsageCost(item: ClothingItem) {
+  if (!item.archived || item.price === null || item.archiveDisposition === "undecided") {
+    return null;
+  }
+  if (item.archiveDisposition === "resold") {
+    if (item.resalePrice === null) return null;
+    return item.price - item.resalePrice;
+  }
+  return item.price;
+}
+
+function finalCostPerWear(item: ClothingItem) {
+  const finalCost = finalUsageCost(item);
+  if (finalCost === null || item.wearCount <= 0) return null;
+  return finalCost / item.wearCount;
+}
+
+function archiveLabel(item: ClothingItem) {
+  return ARCHIVE_DETAILS[item.archiveDisposition].label;
+}
+
 function daysSince(timestamp: number) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -206,7 +245,15 @@ function normalizeItem(item: ClothingItem): ClothingItem {
     price?: unknown;
     wearCount?: unknown;
     lastWornAt?: unknown;
+    archiveDisposition?: unknown;
+    resalePrice?: unknown;
+    archivedAt?: unknown;
   };
+  const archiveDisposition = ["undecided", "discarded", "resold"].includes(
+    String(legacyItem.archiveDisposition),
+  )
+    ? (legacyItem.archiveDisposition as ArchiveDisposition)
+    : "undecided";
   return {
     ...item,
     price:
@@ -222,6 +269,18 @@ function normalizeItem(item: ClothingItem): ClothingItem {
       Number.isFinite(legacyItem.lastWornAt)
         ? legacyItem.lastWornAt
         : null,
+    archiveDisposition,
+    resalePrice:
+      typeof legacyItem.resalePrice === "number" &&
+      Number.isFinite(legacyItem.resalePrice)
+        ? Math.max(0, legacyItem.resalePrice)
+        : null,
+    archivedAt:
+      typeof legacyItem.archivedAt === "number" && Number.isFinite(legacyItem.archivedAt)
+        ? legacyItem.archivedAt
+        : item.archived
+          ? item.updatedAt
+          : null,
   };
 }
 
@@ -446,6 +505,9 @@ function ItemEditor({
       wearCount: Math.floor(parsedWearCount),
       lastWornAt: timestampFromDateInput(lastWornDate),
       archived: initial?.archived ?? false,
+      archiveDisposition: initial?.archiveDisposition ?? "undecided",
+      resalePrice: initial?.resalePrice ?? null,
+      archivedAt: initial?.archivedAt ?? null,
       createdAt: initial?.createdAt ?? now,
       updatedAt: now,
     });
@@ -584,6 +646,163 @@ function ItemEditor({
           </button>
           <button className="primary-button" type="submit" disabled={imageBusy}>
             {initial ? "保存修改" : "加入衣橱"}
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
+function ArchiveEditor({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: ClothingItem;
+  onClose: () => void;
+  onSave: (
+    item: ClothingItem,
+    details: {
+      disposition: ArchiveDisposition;
+      purchasePrice: number | null;
+      resalePrice: number | null;
+    },
+  ) => void;
+}) {
+  const [disposition, setDisposition] = useState<ArchiveDisposition>(
+    item.archiveDisposition,
+  );
+  const [purchasePrice, setPurchasePrice] = useState(
+    item.price === null ? "" : String(item.price),
+  );
+  const [resalePrice, setResalePrice] = useState(
+    item.resalePrice === null ? "" : String(item.resalePrice),
+  );
+  const [error, setError] = useState("");
+
+  const parsedPurchasePrice = purchasePrice.trim() ? Number(purchasePrice) : null;
+  const parsedResalePrice = resalePrice.trim() ? Number(resalePrice) : null;
+  const previewFinalCost =
+    parsedPurchasePrice !== null && Number.isFinite(parsedPurchasePrice)
+      ? disposition === "discarded"
+        ? parsedPurchasePrice
+        : disposition === "resold" &&
+            parsedResalePrice !== null &&
+            Number.isFinite(parsedResalePrice)
+          ? parsedPurchasePrice - parsedResalePrice
+          : null
+      : null;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (
+      parsedPurchasePrice !== null &&
+      (!Number.isFinite(parsedPurchasePrice) || parsedPurchasePrice < 0)
+    ) {
+      setError("购买价格需要是大于或等于 0 的数字");
+      return;
+    }
+    if (
+      disposition === "resold" &&
+      (parsedResalePrice === null ||
+        !Number.isFinite(parsedResalePrice) ||
+        parsedResalePrice < 0)
+    ) {
+      setError("出二手时，请填写实际成交价");
+      return;
+    }
+    onSave(item, {
+      disposition,
+      purchasePrice: parsedPurchasePrice,
+      resalePrice: disposition === "resold" ? parsedResalePrice : null,
+    });
+  }
+
+  return (
+    <Modal
+      eyebrow={item.archived ? "更新归档" : "结束使用"}
+      title={item.archived ? "编辑归档信息" : `归档“${item.name}”`}
+      onClose={onClose}
+    >
+      <form className="editor-form archive-form" onSubmit={submit}>
+        <fieldset className="archive-choice-fieldset">
+          <legend>这件衣服去了哪里？</legend>
+          <div className="archive-choice-grid">
+            {(Object.keys(ARCHIVE_DETAILS) as ArchiveDisposition[]).map((value) => (
+              <button
+                className={disposition === value ? "active" : ""}
+                type="button"
+                aria-pressed={disposition === value}
+                key={value}
+                onClick={() => {
+                  setDisposition(value);
+                  setError("");
+                }}
+              >
+                <strong>{ARCHIVE_DETAILS[value].label}</strong>
+                <small>{ARCHIVE_DETAILS[value].description}</small>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="field-row archive-price-row">
+          <label className="field">
+            <span>当时购买价格（元）</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={purchasePrice}
+              onChange={(event) => setPurchasePrice(event.target.value)}
+              placeholder="例如：599"
+            />
+          </label>
+          {disposition === "resold" && (
+            <label className="field">
+              <span>二手实际成交价（元）*</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={resalePrice}
+                onChange={(event) => setResalePrice(event.target.value)}
+                placeholder="例如：220"
+              />
+            </label>
+          )}
+        </div>
+
+        <div className={`archive-cost-preview disposition-${disposition}`}>
+          <span>最终使用成本</span>
+          {disposition === "undecided" ? (
+            <strong>去向确认后计算</strong>
+          ) : previewFinalCost === null ? (
+            <strong>补充价格后计算</strong>
+          ) : (
+            <>
+              <strong>{formatPrice(previewFinalCost)}</strong>
+              <small>
+                {disposition === "resold" && parsedResalePrice !== null
+                  ? `${formatPrice(parsedPurchasePrice as number)} − ${formatPrice(parsedResalePrice)}`
+                  : "报废后，购买价格即为最终使用成本"}
+                {item.wearCount > 0
+                  ? ` · 最终每次 ${formatPrice(previewFinalCost / item.wearCount)}`
+                  : ""}
+              </small>
+            </>
+          )}
+        </div>
+
+        {error && <p className="form-error">{error}</p>}
+        <footer className="form-footer">
+          <button className="secondary-button" type="button" onClick={onClose}>
+            取消
+          </button>
+          <button className="primary-button" type="submit">
+            {item.archived ? "保存归档信息" : "确认归档"}
           </button>
         </footer>
       </form>
@@ -770,6 +989,7 @@ export default function Home() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
   const [itemEditor, setItemEditor] = useState<ItemEditorState>(null);
+  const [archiveEditor, setArchiveEditor] = useState<ClothingItem | null>(null);
   const [outfitEditor, setOutfitEditor] = useState<OutfitEditorState>(null);
   const [storageMessage, setStorageMessage] = useState("正在打开你的衣橱…");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -824,6 +1044,26 @@ export default function Home() {
     [state.items],
   );
 
+  const archivedItems = useMemo(
+    () => state.items.filter((item) => item.archived),
+    [state.items],
+  );
+
+  const archiveStats = useMemo(
+    () => ({
+      total: archivedItems.length,
+      resold: archivedItems.filter((item) => item.archiveDisposition === "resold")
+        .length,
+      discarded: archivedItems.filter(
+        (item) => item.archiveDisposition === "discarded",
+      ).length,
+      undecided: archivedItems.filter(
+        (item) => item.archiveDisposition === "undecided",
+      ).length,
+    }),
+    [archivedItems],
+  );
+
   const totalWearCount = useMemo(
     () => activeItems.reduce((total, item) => total + item.wearCount, 0),
     [activeItems],
@@ -839,10 +1079,21 @@ export default function Home() {
     return state.items
       .filter((item) => (showArchived ? item.archived : !item.archived))
       .filter((item) => category === "全部" || item.category === category)
-      .filter((item) => !showAttentionOnly || isUsageAttentionNeeded(item))
+      .filter(
+        (item) => showArchived || !showAttentionOnly || isUsageAttentionNeeded(item),
+      )
       .filter((item) => {
         if (!keyword) return true;
-        return [item.name, item.category, item.color, item.season, item.notes]
+        return [
+          item.name,
+          item.category,
+          item.color,
+          item.season,
+          item.notes,
+          archiveLabel(item),
+          item.price,
+          item.resalePrice,
+        ]
           .join(" ")
           .toLowerCase()
           .includes(keyword);
@@ -859,6 +1110,13 @@ export default function Home() {
         if (wardrobeSort === "cost-high") {
           return (
             (averageWearCost(b) ?? -1) - (averageWearCost(a) ?? -1) ||
+            b.updatedAt - a.updatedAt
+          );
+        }
+        if (wardrobeSort === "final-cost-high") {
+          return (
+            (finalUsageCost(b) ?? -Infinity) -
+              (finalUsageCost(a) ?? -Infinity) ||
             b.updatedAt - a.updatedAt
           );
         }
@@ -891,6 +1149,7 @@ export default function Home() {
       };
     });
     setItemEditor(null);
+    if (!item.archived) setShowArchived(false);
     setSelectedItemId(item.id);
   }
 
@@ -921,16 +1180,57 @@ export default function Home() {
     setSelectedOutfitId(null);
   }
 
-  function toggleArchive(item: ClothingItem) {
-    const archived = !item.archived;
+  function saveArchive(
+    item: ClothingItem,
+    details: {
+      disposition: ArchiveDisposition;
+      purchasePrice: number | null;
+      resalePrice: number | null;
+    },
+  ) {
+    const now = Date.now();
     setState((current) => ({
       ...current,
       items: current.items.map((value) =>
-        value.id === item.id ? { ...value, archived, updatedAt: Date.now() } : value,
+        value.id === item.id
+          ? {
+              ...value,
+              price: details.purchasePrice,
+              archived: true,
+              archiveDisposition: details.disposition,
+              resalePrice:
+                details.disposition === "resold" ? details.resalePrice : null,
+              archivedAt: value.archivedAt ?? now,
+              updatedAt: now,
+            }
+          : value,
       ),
     }));
-    if (!archived) setShowArchived(false);
+    setArchiveEditor(null);
+    setShowArchived(true);
+    setShowAttentionOnly(false);
+    setSelectedItemId(item.id);
+    setView("wardrobe");
+  }
+
+  function restoreItem(item: ClothingItem) {
+    setState((current) => ({
+      ...current,
+      items: current.items.map((value) =>
+        value.id === item.id
+          ? {
+              ...value,
+              archived: false,
+              archiveDisposition: "undecided",
+              resalePrice: null,
+              archivedAt: null,
+              updatedAt: Date.now(),
+            }
+          : value,
+      ),
+    }));
     setSelectedItemId(null);
+    setShowArchived(false);
   }
 
   function recordWear(item: ClothingItem) {
@@ -956,8 +1256,23 @@ export default function Home() {
 
   function navigate(nextView: View) {
     setView(nextView);
+    if (nextView === "outfits") setShowAttentionOnly(false);
     setSelectedItemId(null);
     setSelectedOutfitId(null);
+  }
+
+  function openWardrobe() {
+    setShowArchived(false);
+    setShowAttentionOnly(false);
+    setWardrobeSort("updated");
+    navigate("wardrobe");
+  }
+
+  function openArchive() {
+    setShowArchived(true);
+    setShowAttentionOnly(false);
+    setWardrobeSort("updated");
+    navigate("wardrobe");
   }
 
   return (
@@ -971,9 +1286,9 @@ export default function Home() {
 
         <nav className="desktop-nav" aria-label="主要导航">
           <button
-            className={view === "wardrobe" ? "active" : ""}
+            className={view === "wardrobe" && !showArchived ? "active" : ""}
             type="button"
-            onClick={() => navigate("wardrobe")}
+            onClick={openWardrobe}
           >
             <span>01</span>
             衣橱
@@ -985,6 +1300,14 @@ export default function Home() {
           >
             <span>02</span>
             衣帽间
+          </button>
+          <button
+            className={view === "wardrobe" && showArchived ? "active" : ""}
+            type="button"
+            onClick={openArchive}
+          >
+            <span>03</span>
+            归档
           </button>
         </nav>
 
@@ -1000,7 +1323,13 @@ export default function Home() {
             <span>TLB</span>
             <strong>THE LOOK BOOK</strong>
           </div>
-          <p>{view === "wardrobe" ? "MY WARDROBE" : "MY DRESSING ROOM"}</p>
+          <p>
+            {view === "outfits"
+              ? "MY DRESSING ROOM"
+              : showArchived
+                ? "MY ARCHIVE"
+                : "MY WARDROBE"}
+          </p>
           <button
             className="header-add"
             type="button"
@@ -1017,39 +1346,68 @@ export default function Home() {
           <>
             <section className="hero">
               <div>
-                <p className="eyebrow">YOUR DAILY WARDROBE</p>
-                <h1>
-                  今天想穿什么？
-                  <br />
-                  从喜欢的衣服开始。
-                </h1>
+                <p className="eyebrow">
+                  {showArchived ? "WARDROBE ARCHIVE" : "YOUR DAILY WARDROBE"}
+                </p>
+                {showArchived ? (
+                  <h1>
+                    离开衣橱，
+                    <br />
+                    去向也值得记录。
+                  </h1>
+                ) : (
+                  <h1>
+                    今天想穿什么？
+                    <br />
+                    从喜欢的衣服开始。
+                  </h1>
+                )}
               </div>
               <p className="hero-copy">
-                把常穿的衣服放进来，随手记录搭配。
-                找衣服、换季和出门前，都更轻松。
+                {showArchived
+                  ? "记录报废或二手成交信息，算清每件衣服从买入到离开的最终使用成本。"
+                  : "把常穿的衣服放进来，随手记录搭配。找衣服、换季和出门前，都更轻松。"}
               </p>
             </section>
 
-            <section className="stats" aria-label="衣橱概览">
+            <section className="stats" aria-label={showArchived ? "归档概览" : "衣橱概览"}>
               <div>
-                <strong>{activeItems.length.toString().padStart(2, "0")}</strong>
-                <span>件单品</span>
+                <strong>
+                  {(showArchived ? archiveStats.total : activeItems.length)
+                    .toString()
+                    .padStart(2, "0")}
+                </strong>
+                <span>{showArchived ? "件已归档" : "件单品"}</span>
               </div>
               <div>
-                <strong>{totalWearCount.toString().padStart(2, "0")}</strong>
-                <span>次穿着</span>
+                <strong>
+                  {(showArchived ? archiveStats.resold : totalWearCount)
+                    .toString()
+                    .padStart(2, "0")}
+                </strong>
+                <span>{showArchived ? "件已出二手" : "次穿着"}</span>
               </div>
               <div>
-                <strong>{attentionCount.toString().padStart(2, "0")}</strong>
-                <span>件待关注</span>
+                <strong>
+                  {(showArchived ? archiveStats.discarded : attentionCount)
+                    .toString()
+                    .padStart(2, "0")}
+                </strong>
+                <span>{showArchived ? "件已报废" : "件待关注"}</span>
               </div>
-              <p>记录每次穿着，单次成本和清理建议会越来越准确。</p>
+              <p>
+                {showArchived
+                  ? `${archiveStats.undecided} 件还在待处理，补充去向后即可计算最终成本。`
+                  : "记录每次穿着，单次成本和清理建议会越来越准确。"}
+              </p>
             </section>
 
             <section className="collection-section">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">YOUR CLOSET</p>
+                  <p className="eyebrow">
+                    {showArchived ? "ARCHIVE RECORDS" : "YOUR CLOSET"}
+                  </p>
                   <h2>{showArchived ? "已归档单品" : "我的衣橱"}</h2>
                 </div>
                 <div className="wardrobe-tools">
@@ -1066,12 +1424,31 @@ export default function Home() {
                   <button
                     className={`archive-toggle ${showArchived ? "active" : ""}`}
                     type="button"
-                    onClick={() => setShowArchived((current) => !current)}
+                    onClick={() => (showArchived ? openWardrobe() : openArchive())}
                   >
-                    {showArchived ? "返回衣橱" : "查看归档"}
+                    {showArchived
+                      ? "返回在穿衣橱"
+                      : `归档衣物 ${archivedItems.length}`}
                   </button>
                 </div>
               </div>
+
+              {showArchived && (
+                <div className="archive-summary">
+                  <div>
+                    <span className="disposition-chip disposition-resold">
+                      已出二手 {archiveStats.resold}
+                    </span>
+                    <span className="disposition-chip disposition-discarded">
+                      已报废 {archiveStats.discarded}
+                    </span>
+                    <span className="disposition-chip disposition-undecided">
+                      待处理 {archiveStats.undecided}
+                    </span>
+                  </div>
+                  <p>最终使用成本 = 购买价格 − 二手成交价；报废时即为购买价格。</p>
+                </div>
+              )}
 
               <div className="wardrobe-filter-row">
                 <div className="category-tabs" role="tablist" aria-label="按分类筛选">
@@ -1089,14 +1466,16 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="usage-controls">
-                  <button
-                    className={`attention-toggle ${showAttentionOnly ? "active" : ""}`}
-                    type="button"
-                    aria-pressed={showAttentionOnly}
-                    onClick={() => setShowAttentionOnly((current) => !current)}
-                  >
-                    待关注 {attentionCount}
-                  </button>
+                  {!showArchived && (
+                    <button
+                      className={`attention-toggle ${showAttentionOnly ? "active" : ""}`}
+                      type="button"
+                      aria-pressed={showAttentionOnly}
+                      onClick={() => setShowAttentionOnly((current) => !current)}
+                    >
+                      待关注 {attentionCount}
+                    </button>
+                  )}
                   <label className="sort-field">
                     <span className="visually-hidden">单品排序</span>
                     <select
@@ -1109,6 +1488,9 @@ export default function Home() {
                       <option value="unworn">久未穿优先</option>
                       <option value="most-worn">穿着最多</option>
                       <option value="cost-high">单次成本最高</option>
+                      {showArchived && (
+                        <option value="final-cost-high">最终成本最高</option>
+                      )}
                     </select>
                   </label>
                 </div>
@@ -1121,7 +1503,8 @@ export default function Home() {
                       outfit.itemIds.includes(item.id),
                     ).length;
                     const wearCost = averageWearCost(item);
-                    const needsAttention = isUsageAttentionNeeded(item);
+                    const archivedCost = finalUsageCost(item);
+                    const needsAttention = !item.archived && isUsageAttentionNeeded(item);
                     return (
                       <button
                         className="garment-card"
@@ -1156,6 +1539,18 @@ export default function Home() {
                                 : " · 价格未记录"}
                           </strong>
                         </div>
+                        {item.archived && (
+                          <div
+                            className={`archive-card-summary disposition-${item.archiveDisposition}`}
+                          >
+                            <span>{archiveLabel(item)}</span>
+                            <strong>
+                              {archivedCost !== null
+                                ? `最终成本 ${formatPrice(archivedCost)}`
+                                : "最终成本待确认"}
+                            </strong>
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -1168,19 +1563,25 @@ export default function Home() {
                     <i />
                   </div>
                   <p className="eyebrow">
-                    {search || category !== "全部" || showArchived || showAttentionOnly
-                      ? "没有找到匹配的单品"
-                      : "从第一件开始"}
+                    {showArchived && !search && category === "全部"
+                      ? "归档还是空的"
+                      : search || category !== "全部" || showAttentionOnly
+                        ? "没有找到匹配的单品"
+                        : "从第一件开始"}
                   </p>
                   <h3>
-                    {search || category !== "全部" || showArchived || showAttentionOnly
-                      ? "换个筛选条件看看"
-                      : "把常穿的衣服放进来"}
+                    {showArchived && !search && category === "全部"
+                      ? "暂时没有归档衣物"
+                      : search || category !== "全部" || showAttentionOnly
+                        ? "换个筛选条件看看"
+                        : "把常穿的衣服放进来"}
                   </h3>
                   <p>
-                    {search || category !== "全部" || showArchived || showAttentionOnly
-                      ? "清除搜索或切换分类，衣服可能就在别处。"
-                      : "拍一张照片、填个名字即可。之后随时可以补充信息。"}
+                    {showArchived && !search && category === "全部"
+                      ? "当你归档一件衣服，它会连同去向、二手成交价和最终成本出现在这里。"
+                      : search || category !== "全部" || showAttentionOnly
+                        ? "清除搜索或切换分类，衣服可能就在别处。"
+                        : "拍一张照片、填个名字即可。之后随时可以补充信息。"}
                   </p>
                   {!search && category === "全部" && !showArchived && !showAttentionOnly && (
                     <button className="primary-button" type="button" onClick={() => setItemEditor("new")}>
@@ -1288,7 +1689,7 @@ export default function Home() {
                     className="primary-button"
                     type="button"
                     onClick={() =>
-                      activeItems.length ? setOutfitEditor({}) : navigate("wardrobe")
+                      activeItems.length ? setOutfitEditor({}) : openWardrobe()
                     }
                   >
                     {activeItems.length ? "＋ 新建第一套搭配" : "去添加单品"}
@@ -1302,22 +1703,12 @@ export default function Home() {
 
       <nav className="mobile-nav" aria-label="移动端导航">
         <button
-          className={view === "wardrobe" ? "active" : ""}
+          className={view === "wardrobe" && !showArchived ? "active" : ""}
           type="button"
-          onClick={() => navigate("wardrobe")}
+          onClick={openWardrobe}
         >
           <span>衣</span>
           衣橱
-        </button>
-        <button
-          className="mobile-add"
-          type="button"
-          aria-label={view === "wardrobe" ? "添加单品" : "新建搭配"}
-          onClick={() =>
-            view === "wardrobe" ? setItemEditor("new") : setOutfitEditor({})
-          }
-        >
-          ＋
         </button>
         <button
           className={view === "outfits" ? "active" : ""}
@@ -1326,6 +1717,14 @@ export default function Home() {
         >
           <span>搭</span>
           衣帽间
+        </button>
+        <button
+          className={view === "wardrobe" && showArchived ? "active" : ""}
+          type="button"
+          onClick={openArchive}
+        >
+          <span>存</span>
+          归档
         </button>
       </nav>
 
@@ -1375,6 +1774,56 @@ export default function Home() {
                 <dd>{formatDate(selectedItem.updatedAt)}</dd>
               </div>
             </dl>
+
+            {selectedItem.archived && (
+              <section
+                className={`archive-record disposition-${selectedItem.archiveDisposition}`}
+              >
+                <div className="archive-record-heading">
+                  <div>
+                    <p className="eyebrow">ARCHIVE STATUS</p>
+                    <h3>{archiveLabel(selectedItem)}</h3>
+                  </div>
+                  <span>{ARCHIVE_DETAILS[selectedItem.archiveDisposition].description}</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>归档日期</dt>
+                    <dd>
+                      {selectedItem.archivedAt
+                        ? formatDate(selectedItem.archivedAt)
+                        : "未记录"}
+                    </dd>
+                  </div>
+                  {selectedItem.archiveDisposition === "resold" && (
+                    <div>
+                      <dt>二手成交价</dt>
+                      <dd>
+                        {selectedItem.resalePrice !== null
+                          ? formatPrice(selectedItem.resalePrice)
+                          : "待补充"}
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>最终使用成本</dt>
+                    <dd>
+                      {finalUsageCost(selectedItem) !== null
+                        ? formatPrice(finalUsageCost(selectedItem) as number)
+                        : "待确认"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>最终单次成本</dt>
+                    <dd>
+                      {finalCostPerWear(selectedItem) !== null
+                        ? `${formatPrice(finalCostPerWear(selectedItem) as number)}/次`
+                        : "—"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            )}
 
             <section className="usage-panel" aria-live="polite">
               <div className="usage-panel-heading">
@@ -1474,13 +1923,38 @@ export default function Home() {
               )}
             </section>
 
-            <button
-              className="archive-action"
-              type="button"
-              onClick={() => toggleArchive(selectedItem)}
-            >
-              {selectedItem.archived ? "恢复到衣橱" : "归档这件单品"}
-            </button>
+            {selectedItem.archived ? (
+              <div className="archive-detail-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    setArchiveEditor(selectedItem);
+                    setSelectedItemId(null);
+                  }}
+                >
+                  编辑归档信息
+                </button>
+                <button
+                  className="archive-action"
+                  type="button"
+                  onClick={() => restoreItem(selectedItem)}
+                >
+                  恢复到衣橱
+                </button>
+              </div>
+            ) : (
+              <button
+                className="archive-action"
+                type="button"
+                onClick={() => {
+                  setArchiveEditor(selectedItem);
+                  setSelectedItemId(null);
+                }}
+              >
+                归档这件单品
+              </button>
+            )}
           </aside>
         </div>
       )}
@@ -1562,6 +2036,14 @@ export default function Home() {
           initial={itemEditor === "new" ? null : itemEditor}
           onClose={() => setItemEditor(null)}
           onSave={saveItem}
+        />
+      )}
+
+      {archiveEditor && (
+        <ArchiveEditor
+          item={archiveEditor}
+          onClose={() => setArchiveEditor(null)}
+          onSave={saveArchive}
         />
       )}
 

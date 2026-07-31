@@ -51,7 +51,7 @@ Season signatures:
 
 ### Shared navigation
 
-- Desktop: a warm cream side rail with THE LOOK BOOK wordmark, two clear destinations, and local-storage status.
+- Desktop: a warm cream side rail with THE LOOK BOOK wordmark, three clear destinations (Wardrobe, Dressing Room, Archive), and local-storage status.
 - Mobile: compact wordmark at the top and a three-part bottom navigation.
 - Primary action stays visible in the top-right: add an item in Wardrobe, create a look in Dressing Room.
 
@@ -63,6 +63,14 @@ Season signatures:
 4. Usage-attention filter and sorting by last wear, wear count, or cost per wear.
 5. Photo-first item grid with quiet wear-efficiency status.
 6. Clicking an item opens its price, wear history, cost per wear, and every look that contains it.
+
+### Archive
+
+1. A first-class navigation destination, not a hidden filter.
+2. Summary counts for pending, discarded, and resold items.
+3. Every archived card carries a visible disposition label and final usage cost.
+4. Archive details record the archive date, resale price, final usage cost, and final cost per wear.
+5. Archived items can be edited or restored to the active wardrobe.
 
 ### Dressing Room
 
@@ -87,6 +95,13 @@ Season signatures:
 - “今天穿了” is the primary quick action and updates both count and last-worn date.
 - Cost per wear is `price / wear count`; it stays pending until the item has been worn.
 - Missing wear history and items unworn for at least 90 days are grouped as “待关注”.
+
+### Archive lifecycle
+
+- Pending items stay visible but do not show a final cost until their disposition is confirmed.
+- A discarded item’s final usage cost equals its purchase price.
+- A resold item’s final usage cost is `purchase price - resale price`.
+- Final cost per wear is `final usage cost / wear count` when wear history exists.
 
 ### Season tab
 
