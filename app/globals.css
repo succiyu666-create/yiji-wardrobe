@@ -2565,3 +2565,254 @@ body {
     border-radius: 24px 24px 0 0;
   }
 }
+
+/* Wardrobe usage and cost-per-wear */
+
+.wardrobe-filter-row {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.wardrobe-filter-row .category-tabs {
+  border: 0;
+  flex: 1 1 auto;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.usage-controls {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin: 36px 0 10px;
+}
+
+.attention-toggle,
+.sort-field select {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  height: 36px;
+}
+
+.attention-toggle {
+  padding: 0 12px;
+}
+
+.attention-toggle:hover,
+.attention-toggle.active {
+  background: #f4dfd4;
+  border-color: rgba(157, 73, 48, 0.24);
+  color: #8c4935;
+}
+
+.sort-field select {
+  outline: 0;
+  padding: 0 30px 0 11px;
+}
+
+.sort-field select:focus {
+  border-color: var(--sage);
+}
+
+.wear-summary {
+  align-items: center;
+  background: #e4eadf;
+  border-radius: 11px;
+  color: #56644e;
+  display: flex;
+  font-size: 9px;
+  justify-content: space-between;
+  margin-top: 12px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.wear-summary.attention {
+  background: #f4dfd4;
+  color: #8c4935;
+}
+
+.wear-summary strong {
+  font-size: 9px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.usage-field-row > .field {
+  min-width: 0;
+}
+
+.field-help {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.usage-panel {
+  background: var(--card);
+  border-radius: 18px;
+  margin: 22px 0 26px;
+  padding: 20px;
+}
+
+.usage-panel-heading {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.usage-panel-heading .eyebrow {
+  margin-bottom: 5px;
+}
+
+.usage-panel-heading h3 {
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 650;
+  margin: 0;
+}
+
+.record-wear-button {
+  background: var(--accent);
+  border-radius: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 650;
+  min-height: 40px;
+  padding: 0 14px;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.record-wear-button:hover {
+  background: var(--accent-dark);
+  transform: translateY(-1px);
+}
+
+.usage-metrics {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.usage-metrics > div {
+  border-right: 1px solid var(--line);
+  min-width: 0;
+  padding: 0 13px;
+}
+
+.usage-metrics > div:first-child {
+  padding-left: 0;
+}
+
+.usage-metrics > div:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.usage-metrics span {
+  color: var(--muted);
+  display: block;
+  font-size: 8px;
+  margin-bottom: 7px;
+}
+
+.usage-metrics strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.usage-panel > p {
+  background: #e4eadf;
+  border-radius: 10px;
+  color: #56644e;
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 17px 0 0;
+  padding: 9px 11px;
+}
+
+.usage-panel > p.attention {
+  background: #f4dfd4;
+  color: #8c4935;
+}
+
+@media (max-width: 1120px) {
+  .wardrobe-filter-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .usage-controls {
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 680px) {
+  .wardrobe-filter-row .category-tabs {
+    margin-bottom: 12px;
+  }
+
+  .usage-controls {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .attention-toggle,
+  .sort-field {
+    flex: 1;
+  }
+
+  .sort-field select {
+    width: 100%;
+  }
+
+  .wear-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .wear-summary strong {
+    text-align: left;
+  }
+
+  .usage-panel {
+    padding: 17px;
+  }
+
+  .usage-panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .record-wear-button {
+    width: 100%;
+  }
+
+  .usage-metrics {
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-metrics > div {
+    border: 0;
+    padding: 0;
+  }
+}

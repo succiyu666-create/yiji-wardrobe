@@ -60,8 +60,9 @@ Season signatures:
 1. Friendly introduction: “今天想穿什么？”
 2. Small wardrobe summary.
 3. Search, archive access, and category filters.
-4. Photo-first item grid.
-5. Clicking an item opens its details and every look that contains it.
+4. Usage-attention filter and sorting by last wear, wear count, or cost per wear.
+5. Photo-first item grid with quiet wear-efficiency status.
+6. Clicking an item opens its price, wear history, cost per wear, and every look that contains it.
 
 ### Dressing Room
 
@@ -77,7 +78,15 @@ Season signatures:
 - Clothing photograph is the dominant element.
 - Metadata sits below the image; no overlay on the clothing.
 - “搭配” count is a soft sage label.
+- Wear status uses sage when active and warm coral when the item needs attention.
 - Hover movement is subtle and never crops or distorts the image aggressively.
+
+### Wear efficiency
+
+- Actual wear count is separate from the number of saved outfit ideas.
+- “今天穿了” is the primary quick action and updates both count and last-worn date.
+- Cost per wear is `price / wear count`; it stays pending until the item has been worn.
+- Missing wear history and items unworn for at least 90 days are grouped as “待关注”.
 
 ### Season tab
 
@@ -112,4 +121,3 @@ Don’t:
 - Use childish illustrations or excessive pastel decoration.
 - Apply color filters to uploaded clothing photos.
 - Add ornamental elements that compete with patterned garments.
-

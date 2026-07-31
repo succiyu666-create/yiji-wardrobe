@@ -3,10 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "THE LOOK BOOK｜你的私人衣橱与衣帽间",
-  description: "记录衣服单品与四季穿搭，点开一件衣服即可查看它的所有搭配。",
+  description: "记录衣服、四季穿搭与穿着次数，用平均单次成本看懂衣柜使用效率。",
   openGraph: {
     title: "THE LOOK BOOK｜你的私人衣橱与衣帽间",
-    description: "把喜欢的衣服和每一套搭配，轻松收进你的私人造型册。",
+    description: "记录穿着次数与平均单次成本，让每一件衣服都物尽其用。",
     type: "website",
     images: [
       {
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "THE LOOK BOOK｜你的私人衣橱与衣帽间",
-    description: "把喜欢的衣服和每一套搭配，轻松收进你的私人造型册。",
+    description: "记录穿着次数与平均单次成本，让每一件衣服都物尽其用。",
     images: ["/og.png"],
   },
 };

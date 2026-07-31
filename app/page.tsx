@@ -18,6 +18,9 @@ type ClothingItem = {
   season: string;
   notes: string;
   image: string;
+  price: number | null;
+  wearCount: number;
+  lastWornAt: number | null;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -40,6 +43,7 @@ type AppState = {
 };
 
 type View = "wardrobe" | "outfits";
+type WardrobeSort = "updated" | "unworn" | "most-worn" | "cost-high";
 type ItemEditorState = ClothingItem | "new" | null;
 type OutfitEditorState =
   | { outfit?: Outfit; seedItemIds?: string[] }
@@ -64,6 +68,8 @@ const DB_NAME = "yiji-wardrobe";
 const DB_VERSION = 1;
 const STORE_NAME = "wardrobe";
 const STATE_KEY = "current-state";
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const LONG_UNWORN_DAYS = 90;
 
 function makeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -142,6 +148,81 @@ function formatDate(timestamp: number) {
     month: "short",
     day: "numeric",
   }).format(timestamp);
+}
+
+function formatPrice(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    minimumFractionDigits: value < 100 ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function averageWearCost(item: ClothingItem) {
+  if (item.price === null || item.wearCount <= 0) return null;
+  return item.price / item.wearCount;
+}
+
+function daysSince(timestamp: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - date.getTime()) / DAY_IN_MS));
+}
+
+function lastWornLabel(item: ClothingItem) {
+  if (!item.lastWornAt) return "未记录穿着";
+  const days = daysSince(item.lastWornAt);
+  if (days === 0) return "今天穿过";
+  if (days === 1) return "昨天穿过";
+  return `${days} 天前穿过`;
+}
+
+function isUsageAttentionNeeded(item: ClothingItem) {
+  return !item.lastWornAt || daysSince(item.lastWornAt) >= LONG_UNWORN_DAYS;
+}
+
+function dateInputValue(timestamp: number | null) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const TODAY_INPUT_VALUE = dateInputValue(new Date().getTime());
+
+function timestampFromDateInput(value: string) {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day, 12).getTime();
+}
+
+function normalizeItem(item: ClothingItem): ClothingItem {
+  const legacyItem = item as ClothingItem & {
+    price?: unknown;
+    wearCount?: unknown;
+    lastWornAt?: unknown;
+  };
+  return {
+    ...item,
+    price:
+      typeof legacyItem.price === "number" && Number.isFinite(legacyItem.price)
+        ? Math.max(0, legacyItem.price)
+        : null,
+    wearCount:
+      typeof legacyItem.wearCount === "number" && Number.isFinite(legacyItem.wearCount)
+        ? Math.max(0, Math.floor(legacyItem.wearCount))
+        : 0,
+    lastWornAt:
+      typeof legacyItem.lastWornAt === "number" &&
+      Number.isFinite(legacyItem.lastWornAt)
+        ? legacyItem.lastWornAt
+        : null,
+  };
 }
 
 function currentOutfitSeason(): OutfitSeason {
@@ -307,6 +388,13 @@ function ItemEditor({
   const [season, setSeason] = useState(initial?.season ?? SEASONS[0]);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [image, setImage] = useState(initial?.image ?? "");
+  const [price, setPrice] = useState(
+    initial?.price === null || initial?.price === undefined ? "" : String(initial.price),
+  );
+  const [wearCount, setWearCount] = useState(String(initial?.wearCount ?? 0));
+  const [lastWornDate, setLastWornDate] = useState(
+    dateInputValue(initial?.lastWornAt ?? null),
+  );
   const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -335,6 +423,16 @@ function ItemEditor({
       setError("给这件衣服起个名字吧");
       return;
     }
+    const parsedPrice = price.trim() ? Number(price) : null;
+    const parsedWearCount = Number(wearCount || 0);
+    if (parsedPrice !== null && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) {
+      setError("价格需要是大于或等于 0 的数字");
+      return;
+    }
+    if (!Number.isFinite(parsedWearCount) || parsedWearCount < 0) {
+      setError("穿着次数需要是大于或等于 0 的整数");
+      return;
+    }
     const now = Date.now();
     onSave({
       id: initial?.id ?? makeId(),
@@ -344,6 +442,9 @@ function ItemEditor({
       season,
       notes: notes.trim(),
       image,
+      price: parsedPrice,
+      wearCount: Math.floor(parsedWearCount),
+      lastWornAt: timestampFromDateInput(lastWornDate),
       archived: initial?.archived ?? false,
       createdAt: initial?.createdAt ?? now,
       updatedAt: now,
@@ -429,6 +530,42 @@ function ItemEditor({
             ))}
           </select>
         </label>
+
+        <div className="field-row usage-field-row">
+          <label className="field">
+            <span>购买价格（元）</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+              placeholder="例如：599"
+            />
+          </label>
+          <label className="field">
+            <span>累计穿着次数</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={wearCount}
+              onChange={(event) => setWearCount(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>最后一次穿着</span>
+            <input
+              type="date"
+              value={lastWornDate}
+              max={TODAY_INPUT_VALUE}
+              onChange={(event) => setLastWornDate(event.target.value)}
+            />
+          </label>
+        </div>
+        <p className="field-help">之后也可以在单品详情里点“今天穿了”，快速累计次数。</p>
 
         <label className="field full">
           <span>备注</span>
@@ -627,6 +764,8 @@ export default function Home() {
   );
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("全部");
+  const [wardrobeSort, setWardrobeSort] = useState<WardrobeSort>("updated");
+  const [showAttentionOnly, setShowAttentionOnly] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
@@ -640,7 +779,9 @@ export default function Home() {
     loadState()
       .then((stored) => {
         if (!active) return;
-        const storedItems = Array.isArray(stored.items) ? stored.items : [];
+        const storedItems = Array.isArray(stored.items)
+          ? stored.items.map(normalizeItem)
+          : [];
         const storedOutfits = Array.isArray(stored.outfits) ? stored.outfits : [];
         setState({
           items: storedItems,
@@ -683,16 +824,22 @@ export default function Home() {
     [state.items],
   );
 
-  const unstyledCount = useMemo(() => {
-    const used = new Set(state.outfits.flatMap((outfit) => outfit.itemIds));
-    return activeItems.filter((item) => !used.has(item.id)).length;
-  }, [activeItems, state.outfits]);
+  const totalWearCount = useMemo(
+    () => activeItems.reduce((total, item) => total + item.wearCount, 0),
+    [activeItems],
+  );
+
+  const attentionCount = useMemo(
+    () => activeItems.filter(isUsageAttentionNeeded).length,
+    [activeItems],
+  );
 
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return state.items
       .filter((item) => (showArchived ? item.archived : !item.archived))
       .filter((item) => category === "全部" || item.category === category)
+      .filter((item) => !showAttentionOnly || isUsageAttentionNeeded(item))
       .filter((item) => {
         if (!keyword) return true;
         return [item.name, item.category, item.color, item.season, item.notes]
@@ -700,8 +847,24 @@ export default function Home() {
           .toLowerCase()
           .includes(keyword);
       })
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [category, search, showArchived, state.items]);
+      .sort((a, b) => {
+        if (wardrobeSort === "unworn") {
+          const aDate = a.lastWornAt ?? 0;
+          const bDate = b.lastWornAt ?? 0;
+          return aDate - bDate || a.createdAt - b.createdAt;
+        }
+        if (wardrobeSort === "most-worn") {
+          return b.wearCount - a.wearCount || b.updatedAt - a.updatedAt;
+        }
+        if (wardrobeSort === "cost-high") {
+          return (
+            (averageWearCost(b) ?? -1) - (averageWearCost(a) ?? -1) ||
+            b.updatedAt - a.updatedAt
+          );
+        }
+        return b.updatedAt - a.updatedAt;
+      });
+  }, [category, search, showArchived, showAttentionOnly, state.items, wardrobeSort]);
 
   const selectedItem = state.items.find((item) => item.id === selectedItemId) ?? null;
   const selectedOutfit =
@@ -768,6 +931,22 @@ export default function Home() {
     }));
     if (!archived) setShowArchived(false);
     setSelectedItemId(null);
+  }
+
+  function recordWear(item: ClothingItem) {
+    setState((current) => ({
+      ...current,
+      items: current.items.map((value) =>
+        value.id === item.id
+          ? {
+              ...value,
+              wearCount: value.wearCount + 1,
+              lastWornAt: Date.now(),
+              updatedAt: Date.now(),
+            }
+          : value,
+      ),
+    }));
   }
 
   function beginOutfitFromItem(itemId: string) {
@@ -857,14 +1036,14 @@ export default function Home() {
                 <span>件单品</span>
               </div>
               <div>
-                <strong>{state.outfits.length.toString().padStart(2, "0")}</strong>
-                <span>套搭配</span>
+                <strong>{totalWearCount.toString().padStart(2, "0")}</strong>
+                <span>次穿着</span>
               </div>
               <div>
-                <strong>{unstyledCount.toString().padStart(2, "0")}</strong>
-                <span>件待搭配</span>
+                <strong>{attentionCount.toString().padStart(2, "0")}</strong>
+                <span>件待关注</span>
               </div>
-              <p>先从常穿的开始，衣橱会一点点变得更好用。</p>
+              <p>记录每次穿着，单次成本和清理建议会越来越准确。</p>
             </section>
 
             <section className="collection-section">
@@ -894,19 +1073,45 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="category-tabs" role="tablist" aria-label="按分类筛选">
-                {["全部", ...CATEGORIES].map((value) => (
+              <div className="wardrobe-filter-row">
+                <div className="category-tabs" role="tablist" aria-label="按分类筛选">
+                  {["全部", ...CATEGORIES].map((value) => (
+                    <button
+                      className={category === value ? "active" : ""}
+                      type="button"
+                      role="tab"
+                      aria-selected={category === value}
+                      key={value}
+                      onClick={() => setCategory(value)}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+                <div className="usage-controls">
                   <button
-                    className={category === value ? "active" : ""}
+                    className={`attention-toggle ${showAttentionOnly ? "active" : ""}`}
                     type="button"
-                    role="tab"
-                    aria-selected={category === value}
-                    key={value}
-                    onClick={() => setCategory(value)}
+                    aria-pressed={showAttentionOnly}
+                    onClick={() => setShowAttentionOnly((current) => !current)}
                   >
-                    {value}
+                    待关注 {attentionCount}
                   </button>
-                ))}
+                  <label className="sort-field">
+                    <span className="visually-hidden">单品排序</span>
+                    <select
+                      value={wardrobeSort}
+                      onChange={(event) =>
+                        setWardrobeSort(event.target.value as WardrobeSort)
+                      }
+                    >
+                      <option value="updated">最近更新</option>
+                      <option value="unworn">久未穿优先</option>
+                      <option value="most-worn">穿着最多</option>
+                      <option value="cost-high">单次成本最高</option>
+                    </select>
+                  </label>
+                </div>
               </div>
 
               {filteredItems.length > 0 ? (
@@ -915,6 +1120,8 @@ export default function Home() {
                     const outfitCount = state.outfits.filter((outfit) =>
                       outfit.itemIds.includes(item.id),
                     ).length;
+                    const wearCost = averageWearCost(item);
+                    const needsAttention = isUsageAttentionNeeded(item);
                     return (
                       <button
                         className="garment-card"
@@ -930,10 +1137,24 @@ export default function Home() {
                         </div>
                         <div className="garment-meta">
                           <div>
-                            <span>{item.category}</span>
+                            <span>
+                              {item.category}
+                              {item.price !== null ? ` · ${formatPrice(item.price)}` : ""}
+                            </span>
                             <h3>{item.name}</h3>
                           </div>
                           <span className="look-count">{outfitCount} 套搭配</span>
+                        </div>
+                        <div className={`wear-summary ${needsAttention ? "attention" : ""}`}>
+                          <span>{lastWornLabel(item)}</span>
+                          <strong>
+                            {item.wearCount} 次
+                            {wearCost !== null
+                              ? ` · ${formatPrice(wearCost)}/次`
+                              : item.price !== null
+                                ? " · 穿一次后计算成本"
+                                : " · 价格未记录"}
+                          </strong>
                         </div>
                       </button>
                     );
@@ -947,21 +1168,21 @@ export default function Home() {
                     <i />
                   </div>
                   <p className="eyebrow">
-                    {search || category !== "全部" || showArchived
+                    {search || category !== "全部" || showArchived || showAttentionOnly
                       ? "没有找到匹配的单品"
                       : "从第一件开始"}
                   </p>
                   <h3>
-                    {search || category !== "全部" || showArchived
+                    {search || category !== "全部" || showArchived || showAttentionOnly
                       ? "换个筛选条件看看"
                       : "把常穿的衣服放进来"}
                   </h3>
                   <p>
-                    {search || category !== "全部" || showArchived
+                    {search || category !== "全部" || showArchived || showAttentionOnly
                       ? "清除搜索或切换分类，衣服可能就在别处。"
                       : "拍一张照片、填个名字即可。之后随时可以补充信息。"}
                   </p>
-                  {!search && category === "全部" && !showArchived && (
+                  {!search && category === "全部" && !showArchived && !showAttentionOnly && (
                     <button className="primary-button" type="button" onClick={() => setItemEditor("new")}>
                       ＋ 添加第一件单品
                     </button>
@@ -1154,6 +1375,57 @@ export default function Home() {
                 <dd>{formatDate(selectedItem.updatedAt)}</dd>
               </div>
             </dl>
+
+            <section className="usage-panel" aria-live="polite">
+              <div className="usage-panel-heading">
+                <div>
+                  <p className="eyebrow">WEAR EFFICIENCY</p>
+                  <h3>这件衣服的使用效率</h3>
+                </div>
+                {!selectedItem.archived && (
+                  <button
+                    className="record-wear-button"
+                    type="button"
+                    onClick={() => recordWear(selectedItem)}
+                  >
+                    ＋ 今天穿了
+                  </button>
+                )}
+              </div>
+              <div className="usage-metrics">
+                <div>
+                  <span>累计穿着</span>
+                  <strong>{selectedItem.wearCount} 次</strong>
+                </div>
+                <div>
+                  <span>购买价格</span>
+                  <strong>
+                    {selectedItem.price !== null
+                      ? formatPrice(selectedItem.price)
+                      : "未记录"}
+                  </strong>
+                </div>
+                <div>
+                  <span>平均单次成本</span>
+                  <strong>
+                    {averageWearCost(selectedItem) !== null
+                      ? formatPrice(averageWearCost(selectedItem) as number)
+                      : selectedItem.price !== null
+                        ? "待开穿"
+                        : "—"}
+                  </strong>
+                </div>
+              </div>
+              <p className={isUsageAttentionNeeded(selectedItem) ? "attention" : ""}>
+                {lastWornLabel(selectedItem)}
+                {selectedItem.lastWornAt &&
+                daysSince(selectedItem.lastWornAt) >= LONG_UNWORN_DAYS
+                  ? " · 已超过 90 天，可以考虑重新搭配或清理"
+                  : !selectedItem.lastWornAt
+                    ? " · 记录一次后就能开始追踪使用效率"
+                    : " · 仍在活跃使用中"}
+              </p>
+            </section>
             {selectedItem.notes && <p className="item-notes">{selectedItem.notes}</p>}
 
             <section className="related-section">
