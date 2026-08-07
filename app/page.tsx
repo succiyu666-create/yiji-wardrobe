@@ -59,7 +59,17 @@ type OutfitEditorState =
   | { outfit?: Outfit; seedItemIds?: string[] }
   | null;
 
-const CATEGORIES = ["上衣", "下装", "外套", "连衣裙", "鞋履", "包袋", "配饰", "其他"];
+const CATEGORIES = [
+  "上衣",
+  "下装",
+  "外套",
+  "连衣裙",
+  "鞋履",
+  "袜子",
+  "包袋",
+  "配饰",
+  "其他",
+];
 const SEASONS = ["四季", "春夏", "秋冬", "春", "夏", "秋", "冬"];
 const OUTFIT_SEASONS = ["春", "夏", "秋", "冬"] as const;
 type OutfitSeason = (typeof OUTFIT_SEASONS)[number];
