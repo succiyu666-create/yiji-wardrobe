@@ -1120,9 +1120,14 @@ export default function Home() {
     () =>
       state.items.reduce((total, item) => {
         if (item.price === null || item.purchasedAt === null) return total;
-        return new Date(item.purchasedAt).getFullYear() === currentYear
-          ? total + item.price
-          : total;
+        if (new Date(item.purchasedAt).getFullYear() !== currentYear) return total;
+        const itemCost =
+          item.archived &&
+          item.archiveDisposition === "resold" &&
+          item.resalePrice !== null
+            ? item.price - item.resalePrice
+            : item.price;
+        return total + itemCost;
       }, 0),
     [currentYear, state.items],
   );
