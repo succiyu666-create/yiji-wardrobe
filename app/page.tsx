@@ -43,12 +43,23 @@ type Outfit = {
   updatedAt: number;
 };
 
+type Inspiration = {
+  id: string;
+  title: string;
+  image: string;
+  sourceUrl: string;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 type AppState = {
   items: ClothingItem[];
   outfits: Outfit[];
+  inspirations: Inspiration[];
 };
 
-type View = "wardrobe" | "outfits";
+type View = "wardrobe" | "outfits" | "inspirations";
 type WardrobeSort =
   | "updated"
   | "unworn"
@@ -59,6 +70,7 @@ type ItemEditorState = ClothingItem | "new" | null;
 type OutfitEditorState =
   | { outfit?: Outfit; seedItemIds?: string[] }
   | null;
+type InspirationEditorState = Inspiration | "new" | null;
 
 const CATEGORIES = [
   "上衣",
@@ -84,7 +96,7 @@ const SEASON_DETAILS: Record<
   冬: { english: "WINTER", note: "厚实包裹", mark: "雪" },
 };
 const OCCASIONS = ["日常", "通勤", "约会", "旅行", "运动", "正式", "其他"];
-const EMPTY_STATE: AppState = { items: [], outfits: [] };
+const EMPTY_STATE: AppState = { items: [], outfits: [], inspirations: [] };
 const DB_NAME = "yiji-wardrobe";
 const DB_VERSION = 1;
 const STORE_NAME = "wardrobe";
@@ -307,6 +319,55 @@ function normalizeItem(item: ClothingItem): ClothingItem {
           ? item.updatedAt
           : null,
   };
+}
+
+function normalizeInspiration(inspiration: Inspiration): Inspiration {
+  const legacyInspiration = inspiration as Partial<Inspiration>;
+  const createdAt =
+    typeof legacyInspiration.createdAt === "number" &&
+    Number.isFinite(legacyInspiration.createdAt)
+      ? legacyInspiration.createdAt
+      : Date.now();
+  return {
+    id:
+      typeof legacyInspiration.id === "string" && legacyInspiration.id
+        ? legacyInspiration.id
+        : makeId(),
+    title:
+      typeof legacyInspiration.title === "string" && legacyInspiration.title.trim()
+        ? legacyInspiration.title
+        : "穿搭灵感",
+    image:
+      typeof legacyInspiration.image === "string" ? legacyInspiration.image : "",
+    sourceUrl:
+      typeof legacyInspiration.sourceUrl === "string"
+        ? legacyInspiration.sourceUrl
+        : "",
+    notes:
+      typeof legacyInspiration.notes === "string" ? legacyInspiration.notes : "",
+    createdAt,
+    updatedAt:
+      typeof legacyInspiration.updatedAt === "number" &&
+      Number.isFinite(legacyInspiration.updatedAt)
+        ? legacyInspiration.updatedAt
+        : createdAt,
+  };
+}
+
+function safeInspirationSourceUrl(sourceUrl: string) {
+  if (!sourceUrl) return null;
+  try {
+    const parsedUrl = new URL(sourceUrl);
+    return ["http:", "https:"].includes(parsedUrl.protocol) ? parsedUrl.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function inspirationSourceLabel(sourceUrl: string) {
+  const safeUrl = safeInspirationSourceUrl(sourceUrl);
+  if (!safeUrl) return "私人收藏";
+  return new URL(safeUrl).hostname.replace(/^www\./, "");
 }
 
 function currentOutfitSeason(): OutfitSeason {
@@ -851,6 +912,159 @@ function ArchiveEditor({
   );
 }
 
+function InspirationEditor({
+  initial,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  initial: Inspiration | null;
+  onClose: () => void;
+  onSave: (inspiration: Inspiration) => void;
+  onDelete: (inspiration: Inspiration) => void;
+}) {
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [image, setImage] = useState(initial?.image ?? "");
+  const [sourceUrl, setSourceUrl] = useState(initial?.sourceUrl ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("请选择一张图片");
+      return;
+    }
+    setError("");
+    setImageBusy(true);
+    try {
+      setImage(await resizeImage(file));
+    } catch {
+      setError("这张图片暂时无法使用，请换一张试试");
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!image) {
+      setError("先上传一张参考穿搭图吧");
+      return;
+    }
+    const normalizedSourceUrl = sourceUrl.trim();
+    if (normalizedSourceUrl && !safeInspirationSourceUrl(normalizedSourceUrl)) {
+      setError("来源链接请以 http:// 或 https:// 开头");
+      return;
+    }
+    const now = Date.now();
+    onSave({
+      id: initial?.id ?? makeId(),
+      title: title.trim() || "穿搭灵感",
+      image,
+      sourceUrl: normalizedSourceUrl,
+      notes: notes.trim(),
+      createdAt: initial?.createdAt ?? now,
+      updatedAt: now,
+    });
+  }
+
+  return (
+    <Modal
+      eyebrow={initial ? "更新灵感" : "收进灵感册"}
+      title={initial ? "编辑参考穿搭" : "添加参考穿搭"}
+      onClose={onClose}
+    >
+      <form className="editor-form inspiration-form" onSubmit={submit}>
+        <button
+          className={`photo-dropzone inspiration-photo-dropzone ${image ? "has-image" : ""}`}
+          type="button"
+          onClick={() => fileInput.current?.click()}
+        >
+          {image ? (
+            // This is a local preview before the image is stored in IndexedDB.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={image} alt="参考穿搭预览" />
+          ) : (
+            <>
+              <span className="photo-plus">＋</span>
+              <strong>{imageBusy ? "正在处理…" : "上传参考穿搭图"}</strong>
+              <small>截图、收藏图或街拍都可以</small>
+            </>
+          )}
+        </button>
+        <input
+          ref={fileInput}
+          className="visually-hidden"
+          type="file"
+          accept="image/*"
+          onChange={onFileChange}
+        />
+        {image && (
+          <div className="photo-actions">
+            <button type="button" className="text-button" onClick={() => fileInput.current?.click()}>
+              更换图片
+            </button>
+            <button type="button" className="text-button quiet" onClick={() => setImage("")}>
+              移除
+            </button>
+          </div>
+        )}
+
+        <label className="field full">
+          <span>灵感标题</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="例如：夏日松弛感叠穿"
+          />
+        </label>
+
+        <label className="field full">
+          <span>来源链接（可选）</span>
+          <input
+            type="url"
+            inputMode="url"
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            placeholder="https://..."
+          />
+        </label>
+
+        <label className="field full">
+          <span>备注</span>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="喜欢它的配色、层次，或者想用衣橱里的哪件衣服复刻"
+            rows={3}
+          />
+        </label>
+
+        {error && <p className="form-error">{error}</p>}
+        <footer className={`form-footer ${initial ? "split" : ""}`}>
+          {initial && (
+            <button className="danger-text-button" type="button" onClick={() => onDelete(initial)}>
+              删除灵感
+            </button>
+          )}
+          <div className="footer-actions">
+            <button className="secondary-button" type="button" onClick={onClose}>
+              取消
+            </button>
+            <button className="primary-button" type="submit" disabled={imageBusy}>
+              {initial ? "保存修改" : "保存灵感"}
+            </button>
+          </div>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
 function OutfitEditor({
   initial,
   seedItemIds,
@@ -1054,9 +1268,14 @@ export default function Home() {
   const [showArchived, setShowArchived] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
+  const [selectedInspirationId, setSelectedInspirationId] = useState<string | null>(
+    null,
+  );
   const [itemEditor, setItemEditor] = useState<ItemEditorState>(null);
   const [archiveEditor, setArchiveEditor] = useState<ClothingItem | null>(null);
   const [outfitEditor, setOutfitEditor] = useState<OutfitEditorState>(null);
+  const [inspirationEditor, setInspirationEditor] =
+    useState<InspirationEditorState>(null);
   const [storageMessage, setStorageMessage] = useState("正在打开你的衣橱…");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1069,6 +1288,9 @@ export default function Home() {
           ? stored.items.map(normalizeItem)
           : [];
         const storedOutfits = Array.isArray(stored.outfits) ? stored.outfits : [];
+        const storedInspirations = Array.isArray(stored.inspirations)
+          ? stored.inspirations.map(normalizeInspiration)
+          : [];
         setState({
           items: storedItems,
           outfits: storedOutfits.map((outfit) => ({
@@ -1077,6 +1299,7 @@ export default function Home() {
               ? outfit.season
               : inferOutfitSeason(outfit.itemIds, storedItems),
           })),
+          inspirations: storedInspirations,
         });
         setStorageMessage("已保存在这台设备");
       })
@@ -1219,6 +1442,14 @@ export default function Home() {
   const selectedItem = state.items.find((item) => item.id === selectedItemId) ?? null;
   const selectedOutfit =
     state.outfits.find((outfit) => outfit.id === selectedOutfitId) ?? null;
+  const selectedInspiration =
+    state.inspirations.find(
+      (inspiration) => inspiration.id === selectedInspirationId,
+    ) ?? null;
+  const sortedInspirations = useMemo(
+    () => [...state.inspirations].sort((a, b) => b.updatedAt - a.updatedAt),
+    [state.inspirations],
+  );
   const seasonalOutfits = useMemo(
     () =>
       state.outfits
@@ -1270,6 +1501,37 @@ export default function Home() {
     }));
     setOutfitEditor(null);
     setSelectedOutfitId(null);
+  }
+
+  function saveInspiration(inspiration: Inspiration) {
+    setState((current) => {
+      const exists = current.inspirations.some(
+        (value) => value.id === inspiration.id,
+      );
+      return {
+        ...current,
+        inspirations: exists
+          ? current.inspirations.map((value) =>
+              value.id === inspiration.id ? inspiration : value,
+            )
+          : [inspiration, ...current.inspirations],
+      };
+    });
+    setInspirationEditor(null);
+    setSelectedInspirationId(inspiration.id);
+    setView("inspirations");
+  }
+
+  function deleteInspiration(inspiration: Inspiration) {
+    if (!window.confirm(`确定删除“${inspiration.title}”吗？`)) return;
+    setState((current) => ({
+      ...current,
+      inspirations: current.inspirations.filter(
+        (value) => value.id !== inspiration.id,
+      ),
+    }));
+    setInspirationEditor(null);
+    setSelectedInspirationId(null);
   }
 
   function saveArchive(
@@ -1348,9 +1610,10 @@ export default function Home() {
 
   function navigate(nextView: View) {
     setView(nextView);
-    if (nextView === "outfits") setShowAttentionOnly(false);
+    if (nextView !== "wardrobe") setShowAttentionOnly(false);
     setSelectedItemId(null);
     setSelectedOutfitId(null);
+    setSelectedInspirationId(null);
   }
 
   function openWardrobe() {
@@ -1394,11 +1657,19 @@ export default function Home() {
             衣帽间
           </button>
           <button
+            className={view === "inspirations" ? "active" : ""}
+            type="button"
+            onClick={() => navigate("inspirations")}
+          >
+            <span>03</span>
+            参考穿搭
+          </button>
+          <button
             className={view === "wardrobe" && showArchived ? "active" : ""}
             type="button"
             onClick={openArchive}
           >
-            <span>03</span>
+            <span>04</span>
             归档
           </button>
         </nav>
@@ -1418,19 +1689,27 @@ export default function Home() {
           <p>
             {view === "outfits"
               ? "MY DRESSING ROOM"
-              : showArchived
-                ? "MY ARCHIVE"
-                : "MY WARDROBE"}
+              : view === "inspirations"
+                ? "STYLE REFERENCES"
+                : showArchived
+                  ? "MY ARCHIVE"
+                  : "MY WARDROBE"}
           </p>
           <button
             className="header-add"
             type="button"
-            onClick={() =>
-              view === "wardrobe" ? setItemEditor("new") : setOutfitEditor({})
-            }
+            onClick={() => {
+              if (view === "wardrobe") setItemEditor("new");
+              if (view === "outfits") setOutfitEditor({});
+              if (view === "inspirations") setInspirationEditor("new");
+            }}
           >
             <span>＋</span>
-            {view === "wardrobe" ? "添加单品" : "新建搭配"}
+            {view === "wardrobe"
+              ? "添加单品"
+              : view === "outfits"
+                ? "新建搭配"
+                : "添加灵感"}
           </button>
         </header>
 
@@ -1696,7 +1975,7 @@ export default function Home() {
               )}
             </section>
           </>
-        ) : (
+        ) : view === "outfits" ? (
           <>
             <section className="hero lookbook-hero">
               <div>
@@ -1802,6 +2081,75 @@ export default function Home() {
               )}
             </section>
           </>
+        ) : (
+          <>
+            <section className="hero inspiration-hero">
+              <div>
+                <p className="eyebrow">STYLE REFERENCES</p>
+                <h1>
+                  把喜欢的穿搭，
+                  <br />
+                  收进灵感册。
+                </h1>
+              </div>
+              <p className="hero-copy">
+                保存网上看到的配色、层次和轮廓。下次搭配衣橱里的衣服时，
+                随时回来找灵感。
+              </p>
+            </section>
+
+            <section className="inspiration-section">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">YOUR MOODBOARD</p>
+                  <h2>参考穿搭</h2>
+                </div>
+                <p className="section-count">{state.inspirations.length} 张灵感</p>
+              </div>
+
+              {sortedInspirations.length > 0 ? (
+                <div className="inspiration-grid">
+                  {sortedInspirations.map((inspiration, index) => (
+                    <button
+                      className="inspiration-card"
+                      type="button"
+                      key={inspiration.id}
+                      onClick={() => setSelectedInspirationId(inspiration.id)}
+                    >
+                      {/* Reference photos are stored as local data URLs. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={inspiration.image} alt={inspiration.title} />
+                      <div className="inspiration-card-copy">
+                        <span>
+                          REF {(index + 1).toString().padStart(2, "0")} · {inspirationSourceLabel(inspiration.sourceUrl)}
+                        </span>
+                        <h3>{inspiration.title}</h3>
+                        {inspiration.notes && <p>{inspiration.notes}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state inspiration-empty">
+                  <div className="inspiration-empty-visual" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <p className="eyebrow">灵感册还是空的</p>
+                  <h3>保存第一张参考穿搭</h3>
+                  <p>上传平时收藏的穿搭图，也可以补充原帖链接和复刻思路。</p>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => setInspirationEditor("new")}
+                  >
+                    ＋ 添加第一张灵感
+                  </button>
+                </div>
+              )}
+            </section>
+          </>
         )}
       </div>
 
@@ -1821,6 +2169,14 @@ export default function Home() {
         >
           <span>搭</span>
           衣帽间
+        </button>
+        <button
+          className={view === "inspirations" ? "active" : ""}
+          type="button"
+          onClick={() => navigate("inspirations")}
+        >
+          <span>图</span>
+          灵感
         </button>
         <button
           className={view === "wardrobe" && showArchived ? "active" : ""}
@@ -2143,6 +2499,63 @@ export default function Home() {
         </div>
       )}
 
+      {selectedInspiration && (
+        <div
+          className="drawer-backdrop"
+          onMouseDown={() => setSelectedInspirationId(null)}
+        >
+          <aside
+            className="detail-drawer inspiration-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inspiration-detail-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="drawer-header">
+              <p className="eyebrow">STYLE REFERENCE</p>
+              <CloseButton onClick={() => setSelectedInspirationId(null)} />
+            </header>
+            <div className="inspiration-drawer-image">
+              {/* Reference photos are stored as local data URLs. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={selectedInspiration.image} alt={selectedInspiration.title} />
+            </div>
+            <div className="drawer-title">
+              <div>
+                <span>{inspirationSourceLabel(selectedInspiration.sourceUrl)}</span>
+                <h2 id="inspiration-detail-title">{selectedInspiration.title}</h2>
+              </div>
+              <button
+                className="secondary-button small"
+                type="button"
+                onClick={() => {
+                  setInspirationEditor(selectedInspiration);
+                  setSelectedInspirationId(null);
+                }}
+              >
+                编辑
+              </button>
+            </div>
+            {selectedInspiration.notes && (
+              <p className="item-notes">{selectedInspiration.notes}</p>
+            )}
+            {safeInspirationSourceUrl(selectedInspiration.sourceUrl) && (
+              <a
+                className="inspiration-source-link"
+                href={safeInspirationSourceUrl(selectedInspiration.sourceUrl) as string}
+                target="_blank"
+                rel="noreferrer"
+              >
+                查看原始来源 ↗
+              </a>
+            )}
+            <p className="inspiration-updated">
+              更新于 {formatFullDate(selectedInspiration.updatedAt)}
+            </p>
+          </aside>
+        </div>
+      )}
+
       {itemEditor && (
         <ItemEditor
           initial={itemEditor === "new" ? null : itemEditor}
@@ -2168,6 +2581,15 @@ export default function Home() {
           onClose={() => setOutfitEditor(null)}
           onSave={saveOutfit}
           onDelete={deleteOutfit}
+        />
+      )}
+
+      {inspirationEditor && (
+        <InspirationEditor
+          initial={inspirationEditor === "new" ? null : inspirationEditor}
+          onClose={() => setInspirationEditor(null)}
+          onSave={saveInspiration}
+          onDelete={deleteInspiration}
         />
       )}
     </main>

@@ -3217,3 +3217,195 @@ body {
     padding-left: 0;
   }
 }
+
+/* Reference outfit moodboard */
+
+.inspiration-section {
+  background: #f4efe4;
+  min-height: 58vh;
+  padding: 82px clamp(28px, 6vw, 90px) 110px;
+}
+
+.inspiration-grid {
+  column-count: 3;
+  column-gap: 22px;
+  margin-top: 34px;
+}
+
+.inspiration-card {
+  background: var(--card);
+  border: 1px solid rgba(43, 42, 35, 0.07);
+  border-radius: 20px;
+  break-inside: avoid;
+  cursor: pointer;
+  display: inline-block;
+  margin: 0 0 22px;
+  overflow: hidden;
+  text-align: left;
+  transition: box-shadow 180ms ease, transform 180ms ease;
+  width: 100%;
+}
+
+.inspiration-card:hover {
+  box-shadow: 0 16px 34px rgba(67, 58, 40, 0.09);
+  transform: translateY(-2px);
+}
+
+.inspiration-card > img {
+  background: var(--paper-deep);
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.inspiration-card-copy {
+  padding: 17px 18px 19px;
+}
+
+.inspiration-card-copy > span {
+  color: var(--sage);
+  display: block;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.inspiration-card-copy h3 {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 9px 0 0;
+}
+
+.inspiration-card-copy p {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 8px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.inspiration-empty-visual {
+  height: 118px;
+  position: relative;
+  width: 142px;
+}
+
+.inspiration-empty-visual i {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  height: 104px;
+  left: 31px;
+  position: absolute;
+  top: 7px;
+  transform: rotate(-4deg);
+  width: 76px;
+}
+
+.inspiration-empty-visual i:nth-child(2) {
+  background: #dfe9d4;
+  left: 15px;
+  transform: rotate(-12deg);
+}
+
+.inspiration-empty-visual i:nth-child(3) {
+  background: #f7d96f;
+  left: 48px;
+  transform: rotate(9deg);
+}
+
+.inspiration-photo-dropzone {
+  aspect-ratio: 1.65 / 1;
+}
+
+.inspiration-drawer-image {
+  background: var(--paper-deep);
+  border-radius: 18px;
+  margin-top: 15px;
+  overflow: hidden;
+}
+
+.inspiration-drawer-image img {
+  display: block;
+  max-height: 62vh;
+  object-fit: contain;
+  width: 100%;
+}
+
+.inspiration-source-link {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  display: flex;
+  font-size: 11px;
+  justify-content: center;
+  margin-top: 18px;
+  min-height: 46px;
+  text-decoration: none;
+}
+
+.inspiration-source-link:hover {
+  border-color: var(--ink);
+}
+
+.inspiration-updated {
+  color: var(--muted);
+  font-size: 9px;
+  margin: 14px 0 0;
+  text-align: center;
+}
+
+@media (max-width: 1180px) {
+  .inspiration-grid {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .mobile-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .inspiration-section {
+    padding: 56px 20px 82px;
+  }
+
+  .inspiration-grid {
+    column-gap: 12px;
+    margin-top: 25px;
+  }
+
+  .inspiration-card {
+    border-radius: 15px;
+    margin-bottom: 12px;
+  }
+
+  .inspiration-card-copy {
+    padding: 12px 12px 14px;
+  }
+
+  .inspiration-card-copy h3 {
+    font-size: 13px;
+    margin-top: 7px;
+  }
+
+  .inspiration-card-copy p {
+    display: none;
+  }
+
+  .inspiration-photo-dropzone {
+    aspect-ratio: 1.4 / 1;
+  }
+}
