@@ -70,7 +70,7 @@ const CATEGORIES = [
   "配饰",
   "其他",
 ];
-const SEASONS = ["四季", "春夏", "秋冬", "春", "夏", "秋", "冬"];
+const SEASONS = ["四季", "春秋", "春夏", "秋冬", "春", "夏", "秋", "冬"];
 const OUTFIT_SEASONS = ["春", "夏", "秋", "冬"] as const;
 type OutfitSeason = (typeof OUTFIT_SEASONS)[number];
 const SEASON_DETAILS: Record<
