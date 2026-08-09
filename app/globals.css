@@ -3079,14 +3079,28 @@ body {
   }
 }
 
-/* Purchase dates and annual wardrobe cost */
+/* Purchase dates and wardrobe cost summary */
 
 .stats.stats-with-cost {
-  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.stats.stats-with-cost > div:nth-child(-n + 3) {
+  border-bottom: 1px solid var(--line);
+  grid-column: span 2;
+}
+
+.stats.stats-with-cost > div:nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+.stats.stats-with-cost > div:nth-child(3),
 .stats.stats-with-cost > div:last-child {
   border-right: 0;
+}
+
+.stats.stats-with-cost > div:nth-child(4) {
+  padding-left: 0;
 }
 
 .year-cost-stat {
@@ -3103,6 +3117,11 @@ body {
   white-space: nowrap;
 }
 
+.year-cost-stat span,
+.wardrobe-cost-stat span {
+  white-space: nowrap;
+}
+
 .item-facts {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -3114,6 +3133,10 @@ body {
 @media (max-width: 680px) {
   .stats.stats-with-cost {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats.stats-with-cost > div:nth-child(n) {
+    grid-column: auto;
   }
 
   .stats.stats-with-cost > div:nth-child(-n + 2) {
@@ -3130,7 +3153,12 @@ body {
     border-right: 0;
   }
 
+  .stats.stats-with-cost > div:nth-child(3) {
+    border-right: 1px solid var(--line);
+  }
+
   .stats.stats-with-cost > div:nth-child(3),
+  .stats.stats-with-cost > div:nth-child(4),
   .stats.stats-with-cost > div:nth-child(5) {
     padding-left: 10px;
   }
