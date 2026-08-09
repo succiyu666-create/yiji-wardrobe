@@ -880,6 +880,21 @@ function OutfitEditor({
   const [selected, setSelected] = useState<string[]>(initial?.itemIds ?? seedItemIds);
   const [error, setError] = useState("");
   const selectableItems = items.filter((item) => !item.archived || selected.includes(item.id));
+  const pickerCategories = [
+    ...CATEGORIES,
+    ...selectableItems
+      .map((item) => item.category)
+      .filter(
+        (category, index, categories) =>
+          !CATEGORIES.includes(category) && categories.indexOf(category) === index,
+      ),
+  ];
+  const groupedSelectableItems = pickerCategories
+    .map((category) => ({
+      category,
+      items: selectableItems.filter((item) => item.category === category),
+    }))
+    .filter((group) => group.items.length > 0);
 
   function toggle(id: string) {
     setSelected((current) =>
@@ -955,24 +970,34 @@ function OutfitEditor({
             选择单品 <span>{selected.length} 件</span>
           </legend>
           {selectableItems.length > 0 ? (
-            <div className="item-picker">
-              {selectableItems.map((item) => {
-                const isSelected = selected.includes(item.id);
-                return (
-                  <button
-                    className={`picker-card ${isSelected ? "selected" : ""}`}
-                    type="button"
-                    key={item.id}
-                    onClick={() => toggle(item.id)}
-                    aria-pressed={isSelected}
-                  >
-                    <GarmentVisual item={item} />
-                    <span className="picker-check">{isSelected ? "✓" : "＋"}</span>
-                    <strong>{item.name}</strong>
-                    <small>{item.category}</small>
-                  </button>
-                );
-              })}
+            <div className="grouped-item-picker">
+              {groupedSelectableItems.map((group) => (
+                <section className="picker-category-group" key={group.category}>
+                  <div className="picker-category-heading">
+                    <h3>{group.category}</h3>
+                    <span>{group.items.length} 件</span>
+                  </div>
+                  <div className="item-picker">
+                    {group.items.map((item) => {
+                      const isSelected = selected.includes(item.id);
+                      return (
+                        <button
+                          className={`picker-card ${isSelected ? "selected" : ""}`}
+                          type="button"
+                          key={item.id}
+                          onClick={() => toggle(item.id)}
+                          aria-pressed={isSelected}
+                        >
+                          <GarmentVisual item={item} />
+                          <span className="picker-check">{isSelected ? "✓" : "＋"}</span>
+                          <strong>{item.name}</strong>
+                          <small>{item.category}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           ) : (
             <div className="inline-empty">
