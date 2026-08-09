@@ -1115,6 +1115,15 @@ export default function Home() {
     [activeItems],
   );
 
+  const wardrobeTotalCost = useMemo(
+    () =>
+      activeItems.reduce(
+        (total, item) => total + (item.price === null ? 0 : item.price),
+        0,
+      ),
+    [activeItems],
+  );
+
   const currentYear = new Date().getFullYear();
   const yearlyClothingCost = useMemo(
     () =>
@@ -1459,10 +1468,16 @@ export default function Home() {
               {showArchived ? (
                 <p>{archiveStats.undecided} 件还在待处理，补充去向后即可计算最终成本。</p>
               ) : (
-                <div className="year-cost-stat">
-                  <strong>{formatPrice(yearlyClothingCost)}</strong>
-                  <span>{currentYear} 年穿衣成本</span>
-                </div>
+                <>
+                  <div className="wardrobe-cost-stat">
+                    <strong>{formatPrice(wardrobeTotalCost)}</strong>
+                    <span>衣柜总成本</span>
+                  </div>
+                  <div className="year-cost-stat">
+                    <strong>{formatPrice(yearlyClothingCost)}</strong>
+                    <span>{currentYear} 年穿衣成本</span>
+                  </div>
+                </>
               )}
             </section>
 
