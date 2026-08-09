@@ -3078,3 +3078,65 @@ body {
     text-align: left;
   }
 }
+
+/* Purchase dates and annual wardrobe cost */
+
+.stats.stats-with-cost {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.stats.stats-with-cost > div:last-child {
+  border-right: 0;
+}
+
+.year-cost-stat {
+  background: rgba(242, 200, 75, 0.16);
+}
+
+.year-cost-stat strong {
+  font-size: 27px;
+  white-space: nowrap;
+}
+
+.item-facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.item-facts dd {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .stats.stats-with-cost {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats.stats-with-cost > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .stats.stats-with-cost > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .stats.stats-with-cost > div:nth-child(3) {
+    padding-left: 10px;
+  }
+
+  .year-cost-stat strong {
+    font-size: 23px;
+  }
+
+  .item-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 18px;
+  }
+
+  .item-facts div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .item-facts div:nth-child(3) {
+    padding-left: 0;
+  }
+}

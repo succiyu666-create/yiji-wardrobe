@@ -21,6 +21,7 @@ type ClothingItem = {
   notes: string;
   image: string;
   price: number | null;
+  purchasedAt: number | null;
   wearCount: number;
   lastWornAt: number | null;
   archived: boolean;
@@ -178,6 +179,14 @@ function formatDate(timestamp: number) {
   }).format(timestamp);
 }
 
+function formatFullDate(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(timestamp);
+}
+
 function formatPrice(value: number) {
   return new Intl.NumberFormat("zh-CN", {
     style: "currency",
@@ -253,6 +262,7 @@ function timestampFromDateInput(value: string) {
 function normalizeItem(item: ClothingItem): ClothingItem {
   const legacyItem = item as ClothingItem & {
     price?: unknown;
+    purchasedAt?: unknown;
     wearCount?: unknown;
     lastWornAt?: unknown;
     archiveDisposition?: unknown;
@@ -269,6 +279,11 @@ function normalizeItem(item: ClothingItem): ClothingItem {
     price:
       typeof legacyItem.price === "number" && Number.isFinite(legacyItem.price)
         ? Math.max(0, legacyItem.price)
+        : null,
+    purchasedAt:
+      typeof legacyItem.purchasedAt === "number" &&
+      Number.isFinite(legacyItem.purchasedAt)
+        ? legacyItem.purchasedAt
         : null,
     wearCount:
       typeof legacyItem.wearCount === "number" && Number.isFinite(legacyItem.wearCount)
@@ -460,6 +475,9 @@ function ItemEditor({
   const [price, setPrice] = useState(
     initial?.price === null || initial?.price === undefined ? "" : String(initial.price),
   );
+  const [purchaseDate, setPurchaseDate] = useState(
+    dateInputValue(initial?.purchasedAt ?? null),
+  );
   const [wearCount, setWearCount] = useState(String(initial?.wearCount ?? 0));
   const [lastWornDate, setLastWornDate] = useState(
     dateInputValue(initial?.lastWornAt ?? null),
@@ -512,6 +530,7 @@ function ItemEditor({
       notes: notes.trim(),
       image,
       price: parsedPrice,
+      purchasedAt: timestampFromDateInput(purchaseDate),
       wearCount: Math.floor(parsedWearCount),
       lastWornAt: timestampFromDateInput(lastWornDate),
       archived: initial?.archived ?? false,
@@ -616,6 +635,18 @@ function ItemEditor({
               placeholder="例如：599"
             />
           </label>
+          <label className="field">
+            <span>购入时间</span>
+            <input
+              type="date"
+              value={purchaseDate}
+              max={TODAY_INPUT_VALUE}
+              onChange={(event) => setPurchaseDate(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="field-row usage-field-row">
           <label className="field">
             <span>累计穿着次数</span>
             <input
@@ -1084,6 +1115,18 @@ export default function Home() {
     [activeItems],
   );
 
+  const currentYear = new Date().getFullYear();
+  const yearlyClothingCost = useMemo(
+    () =>
+      state.items.reduce((total, item) => {
+        if (item.price === null || item.purchasedAt === null) return total;
+        return new Date(item.purchasedAt).getFullYear() === currentYear
+          ? total + item.price
+          : total;
+      }, 0),
+    [currentYear, state.items],
+  );
+
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return state.items
@@ -1380,7 +1423,10 @@ export default function Home() {
               </p>
             </section>
 
-            <section className="stats" aria-label={showArchived ? "归档概览" : "衣橱概览"}>
+            <section
+              className={`stats ${showArchived ? "" : "stats-with-cost"}`}
+              aria-label={showArchived ? "归档概览" : "衣橱概览"}
+            >
               <div>
                 <strong>
                   {(showArchived ? archiveStats.total : activeItems.length)
@@ -1405,11 +1451,14 @@ export default function Home() {
                 </strong>
                 <span>{showArchived ? "件已报废" : "件待关注"}</span>
               </div>
-              <p>
-                {showArchived
-                  ? `${archiveStats.undecided} 件还在待处理，补充去向后即可计算最终成本。`
-                  : "记录每次穿着，单次成本和清理建议会越来越准确。"}
-              </p>
+              {showArchived ? (
+                <p>{archiveStats.undecided} 件还在待处理，补充去向后即可计算最终成本。</p>
+              ) : (
+                <div className="year-cost-stat">
+                  <strong>{formatPrice(yearlyClothingCost)}</strong>
+                  <span>{currentYear} 年穿衣成本</span>
+                </div>
+              )}
             </section>
 
             <section className="collection-section">
@@ -1778,6 +1827,14 @@ export default function Home() {
               <div>
                 <dt>季节</dt>
                 <dd>{selectedItem.season}</dd>
+              </div>
+              <div>
+                <dt>购入时间</dt>
+                <dd>
+                  {selectedItem.purchasedAt
+                    ? formatFullDate(selectedItem.purchasedAt)
+                    : "未记录"}
+                </dd>
               </div>
               <div>
                 <dt>更新</dt>
