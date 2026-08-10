@@ -53,6 +53,20 @@ type Inspiration = {
   updatedAt: number;
 };
 
+type InspirationMatch = {
+  itemId: string;
+  score: number;
+  role: string;
+  reason: string;
+};
+
+type InspirationAnalysis = {
+  summary: string;
+  matches: InspirationMatch[];
+  missingPieces: string[];
+  stylingTips: string[];
+};
+
 type AppState = {
   items: ClothingItem[];
   outfits: Outfit[];
@@ -103,6 +117,10 @@ const STORE_NAME = "wardrobe";
 const STATE_KEY = "current-state";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LONG_UNWORN_DAYS = 90;
+const AI_API_ENDPOINT =
+  "https://yiji-wardrobe.the-look-book.workers.dev/api/analyze-inspiration";
+const AI_ACCESS_CODE_KEY = "the-look-book-ai-access-code";
+const MAX_AI_CANDIDATES = 80;
 const ARCHIVE_DETAILS: Record<
   ArchiveDisposition,
   { label: string; description: string }
@@ -181,6 +199,31 @@ function resizeImage(file: File) {
       image.src = String(reader.result);
     };
     reader.readAsDataURL(file);
+  });
+}
+
+function resizeDataUrlForAnalysis(
+  dataUrl: string,
+  maxSide: number,
+  quality: number,
+) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () => reject(new Error("无法读取图片"));
+    image.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("无法处理图片"));
+        return;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    image.src = dataUrl;
   });
 }
 
@@ -440,6 +483,233 @@ function GarmentVisual({
       <span>{categoryMark(item.category)}</span>
       <small>{item.category}</small>
     </div>
+  );
+}
+
+function InspirationAiPanel({
+  inspiration,
+  items,
+  onCreateOutfit,
+}: {
+  inspiration: Inspiration;
+  items: ClothingItem[];
+  onCreateOutfit: (itemIds: string[]) => void;
+}) {
+  const candidates = useMemo(
+    () =>
+      items
+        .filter((item) => !item.archived && Boolean(item.image))
+        .slice(0, MAX_AI_CANDIDATES),
+    [items],
+  );
+  const [accessCode, setAccessCode] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.sessionStorage.getItem(AI_ACCESS_CODE_KEY) ?? "";
+  });
+  const [analysis, setAnalysis] = useState<InspirationAnalysis | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function analyze() {
+    const normalizedAccessCode = accessCode.trim();
+    if (!normalizedAccessCode) {
+      setError("先输入你的 AI 通行码");
+      return;
+    }
+    if (!inspiration.image) {
+      setError("这张灵感还没有参考图");
+      return;
+    }
+    if (candidates.length === 0) {
+      setError("衣橱里还没有带照片的在用单品，先补几张单品照吧");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      const referenceImage = await resizeDataUrlForAnalysis(
+        inspiration.image,
+        900,
+        0.76,
+      );
+      const candidatePayload = await Promise.all(
+        candidates.map(async (item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          color: item.color,
+          season: item.season,
+          image: await resizeDataUrlForAnalysis(item.image, 360, 0.66),
+        })),
+      );
+
+      const response = await fetch(AI_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${normalizedAccessCode}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reference: {
+            id: inspiration.id,
+            title: inspiration.title,
+            notes: inspiration.notes,
+            image: referenceImage,
+          },
+          items: candidatePayload,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { analysis?: InspirationAnalysis; error?: string }
+        | null;
+      if (!response.ok || !payload?.analysis) {
+        if (response.status === 401) {
+          window.sessionStorage.removeItem(AI_ACCESS_CODE_KEY);
+          throw new Error("AI 通行码不正确，请重新输入");
+        }
+        throw new Error(payload?.error || "AI 暂时没有完成分析，请稍后再试");
+      }
+
+      const candidateIds = new Set(candidates.map((item) => item.id));
+      const uniqueIds = new Set<string>();
+      const verifiedMatches = payload.analysis.matches
+        .filter((match) => candidateIds.has(match.itemId))
+        .filter((match) => {
+          if (uniqueIds.has(match.itemId)) return false;
+          uniqueIds.add(match.itemId);
+          return true;
+        })
+        .slice(0, 8);
+      if (verifiedMatches.length === 0) {
+        throw new Error("暂时没有找到足够相似的单品，可以补充更多单品照片后再试");
+      }
+
+      window.sessionStorage.setItem(AI_ACCESS_CODE_KEY, normalizedAccessCode);
+      setAnalysis({ ...payload.analysis, matches: verifiedMatches });
+    } catch (caughtError) {
+      setAnalysis(null);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "AI 暂时没有完成分析，请稍后再试",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const matchedItems = analysis
+    ? analysis.matches
+        .map((match) => ({
+          match,
+          item: items.find((item) => item.id === match.itemId),
+        }))
+        .filter(
+          (value): value is { match: InspirationMatch; item: ClothingItem } =>
+            Boolean(value.item),
+        )
+    : [];
+
+  return (
+    <section className="ai-match-panel" aria-label="AI 衣橱复刻">
+      <div className="ai-match-heading">
+        <div>
+          <p className="eyebrow">AI WARDROBE MATCH</p>
+          <h3>用我的衣橱复刻</h3>
+        </div>
+        <span>{candidates.length} 件可分析</span>
+      </div>
+
+      {!analysis && (
+        <>
+          <p className="ai-privacy-note">
+            点击分析后，这张参考图和衣橱中最多 {MAX_AI_CANDIDATES}
+            件带照片的在用单品缩略图会发送给 OpenAI，仅用于本次匹配。
+          </p>
+          <label className="ai-access-field">
+            <span>AI 通行码</span>
+            <input
+              type="password"
+              value={accessCode}
+              autoComplete="off"
+              onChange={(event) => {
+                setAccessCode(event.target.value);
+                setError("");
+              }}
+              placeholder="输入一次，本次打开期间有效"
+            />
+          </label>
+          <button
+            className="primary-button ai-analyze-button"
+            type="button"
+            onClick={analyze}
+            disabled={busy || candidates.length === 0}
+          >
+            {busy ? "正在看参考图和衣橱…" : "开始 AI 匹配"}
+          </button>
+        </>
+      )}
+
+      {error && <p className="form-error ai-match-error">{error}</p>}
+
+      {analysis && (
+        <div className="ai-match-results">
+          <p className="ai-match-summary">{analysis.summary}</p>
+          <div className="ai-match-list">
+            {matchedItems.map(({ item, match }) => (
+              <div className="ai-match-item" key={item.id}>
+                <GarmentVisual item={item} />
+                <div>
+                  <span>{match.role}</span>
+                  <strong>{item.name}</strong>
+                  <small>{match.reason}</small>
+                </div>
+                <b>{Math.round(match.score)}%</b>
+              </div>
+            ))}
+          </div>
+
+          {analysis.stylingTips.length > 0 && (
+            <div className="ai-styling-tips">
+              <strong>搭配提示</strong>
+              <ul>
+                {analysis.stylingTips.map((tip) => (
+                  <li key={tip}>{tip}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {analysis.missingPieces.length > 0 && (
+            <p className="ai-missing-pieces">
+              <strong>衣橱里暂缺：</strong>
+              {analysis.missingPieces.join("、")}
+            </p>
+          )}
+
+          <div className="ai-match-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setAnalysis(null);
+                setError("");
+              }}
+            >
+              重新分析
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => onCreateOutfit(matchedItems.map(({ item }) => item.id))}
+            >
+              用这些单品新建搭配
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1608,6 +1878,11 @@ export default function Home() {
     setOutfitEditor({ seedItemIds: [itemId] });
   }
 
+  function beginOutfitFromInspiration(itemIds: string[]) {
+    setSelectedInspirationId(null);
+    setOutfitEditor({ seedItemIds: itemIds });
+  }
+
   function navigate(nextView: View) {
     setView(nextView);
     if (nextView !== "wardrobe") setShowAttentionOnly(false);
@@ -2539,6 +2814,11 @@ export default function Home() {
             {selectedInspiration.notes && (
               <p className="item-notes">{selectedInspiration.notes}</p>
             )}
+            <InspirationAiPanel
+              inspiration={selectedInspiration}
+              items={activeItems}
+              onCreateOutfit={beginOutfitFromInspiration}
+            />
             {safeInspirationSourceUrl(selectedInspiration.sourceUrl) && (
               <a
                 className="inspiration-source-link"
