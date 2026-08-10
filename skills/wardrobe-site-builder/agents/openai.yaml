@@ -1,0 +1,4 @@
+interface:
+  display_name: "衣橱网站构建"
+  short_description: "构建和更新个人衣橱、穿搭、归档与使用成本管理网站工具"
+  default_prompt: "Use $wardrobe-site-builder to build or update my personal wardrobe and outfit management website."
